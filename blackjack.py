@@ -3,10 +3,44 @@ import random
 import os
 import time
 import math
+import logging
+import sys
 from pygame import gfxdraw
 
 # Initialize pygame
 pygame.init()
+
+log_file = "console_output.log"
+open(log_file, "w").close()  # Manually clear the file
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler(log_file, mode="w"),  # Overwrite file
+        logging.StreamHandler(sys.stdout)  # Print to console
+    ]
+)
+
+# Custom class to redirect print() and errors to logging
+class LoggerWriter:
+    def __init__(self, level):
+        self.level = level
+
+    def write(self, message):
+        if message.strip():  # Avoid logging empty lines
+            self.level(message)
+
+    def flush(self):  # Needed for compatibility
+        pass
+
+# Redirect stdout and stderr
+sys.stdout = LoggerWriter(logging.info)
+sys.stderr = LoggerWriter(logging.error)
+
+# Example outputs
+print("This is a normal print statement.")  # Gets logged
+sys.stderr.write("This is an error message.\n")  # Gets logged
 
 # Constants
 WIDTH, HEIGHT = 1200, 800
@@ -1184,6 +1218,7 @@ def main():
                                     game_state = "GAME_OVER"
                                     result = "BUST!"
                                     show_dealer_cards = True
+                                    player_money = int(player_money-current_bet)
                                     text_effects.append(TextEffect(
                                         result,
                                         (WIDTH//2, HEIGHT//2),
@@ -1430,6 +1465,7 @@ def main():
                             split_results[i] = "WIN"
                         elif dealer_value > player_value:
                             # Dealer wins
+                            player_money = int(player_money-current_bet)
                             split_results[i] = "LOSE"
                         elif dealer_value < player_value:
                             # Player wins
@@ -1468,7 +1504,7 @@ def main():
                         ))
                     elif dealer_value > player_value:
                         result = "DEALER WINS!"
-                        # Bet already taken
+                        player_money = int(player_money-current_bet)
                         text_effects.append(TextEffect(
                             result,
                             (WIDTH//2, HEIGHT//2),
