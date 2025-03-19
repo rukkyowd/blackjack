@@ -10,6 +10,14 @@ from pygame import gfxdraw
 # Initialize pygame
 pygame.init()
 
+pygame.mixer.init()  # Initialize the mixer module
+card_flip = pygame.mixer.Sound(os.path.join("assets", "sounds", "card_flip.wav"))
+chip_place = pygame.mixer.Sound(os.path.join("assets", "sounds", "chip_place.wav"))
+win = pygame.mixer.Sound(os.path.join("assets", "sounds", "win.wav"))
+lose = pygame.mixer.Sound(os.path.join("assets", "sounds", "lose.wav"))
+
+#Logging Console
+
 log_file = "console_output.log"
 open(log_file, "w").close()  # Manually clear the file
 
@@ -1110,6 +1118,7 @@ def main():
                                         (x, HEIGHT - 150),
                                         (WIDTH // 2, HEIGHT - 200)
                                     ))
+                                    chip_place.play()
 
                     # Check if player clicked on deal button
                     if deal_button.collidepoint(mouse_pos) and current_bet >= MIN_BET:
@@ -1131,6 +1140,7 @@ def main():
                             deck_pos,
                             (WIDTH//2 - CARD_WIDTH - 10, HEIGHT//2 + 50)
                         ))
+                        card_flip.play()
 
                         # Dealer first card
                         dealer_card = deal_card(deck)
@@ -1140,6 +1150,7 @@ def main():
                             deck_pos,
                             (WIDTH//2 - CARD_WIDTH - 10, HEIGHT//2 - 150)
                         ))
+                        card_flip.play()
 
                         # Player second card
                         player_card = deal_card(deck)
@@ -1149,6 +1160,7 @@ def main():
                             deck_pos,
                             (WIDTH//2 + 10, HEIGHT//2 + 50)
                         ))
+                        card_flip.play()
 
                         # Dealer second card (face down)
                         dealer_card = deal_card(deck)
@@ -1158,6 +1170,7 @@ def main():
                             deck_pos,
                             (WIDTH//2 + 10, HEIGHT//2 - 150)
                         ))
+                        card_flip.play()
 
                 # Handle insurance option
                 elif game_state == "INSURANCE":
@@ -1173,6 +1186,7 @@ def main():
                             (WIDTH // 2 - 150, HEIGHT - 150),
                             (WIDTH // 2 - 150, HEIGHT - 300)
                         ))
+                        chip_place.play()
 
                         # Move to player turn
                         game_state = "PLAYER_TURN"
@@ -1224,6 +1238,7 @@ def main():
                                         (WIDTH//2, HEIGHT//2),
                                         RED
                                     ))
+                                    lose.play()
                                     particle_systems.extend(check_achievements(
                                         game_state, result, player_hand, dealer_hand,
                                         player_money, current_bet, achievements_unlocked,
@@ -1255,6 +1270,7 @@ def main():
                                 (WIDTH // 2 - 100, HEIGHT - 150),
                                 (WIDTH // 2, HEIGHT - 200)
                             ))
+                            chip_place.play()
 
                             # Deal one card to player
                             player_card = deal_card(deck)
@@ -1303,6 +1319,7 @@ def main():
                                 (WIDTH // 2 - 100, HEIGHT - 150),
                                 (WIDTH // 2 + 100, HEIGHT - 200)
                             ))
+                            chip_place.play()
 
                             # Deal a new card to the first hand
                             player_card = deal_card(deck)
@@ -1502,6 +1519,7 @@ def main():
                             (WIDTH//2, HEIGHT//2),
                             GREEN
                         ))
+                        win.play()
                     elif dealer_value > player_value:
                         result = "DEALER WINS!"
                         player_money = int(player_money-current_bet)
@@ -1510,6 +1528,7 @@ def main():
                             (WIDTH//2, HEIGHT//2),
                             RED
                         ))
+                        lose.play()
                     elif dealer_value < player_value:
                         result = "YOU WIN!"
                         player_money += current_bet * 2  # Return bet + winnings
@@ -1518,6 +1537,7 @@ def main():
                             (WIDTH//2, HEIGHT//2),
                             GREEN
                         ))
+                        win.play()
                     else:
                         result = "PUSH"
                         player_money += current_bet  # Return bet
