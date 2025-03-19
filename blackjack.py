@@ -10,11 +10,48 @@ from pygame import gfxdraw
 # Initialize pygame
 pygame.init()
 
+# Constants
+WIDTH, HEIGHT = 1200, 800
+CARD_WIDTH, CARD_HEIGHT = 71, 96
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+PURPLE = (128, 0, 128)
+GREEN = (34, 139, 34)
+GOLD = (255, 215, 0)
+RED = (220, 20, 60)
+BLUE = (30, 144, 255)
+FONT = pygame.font.Font(None, 36)
+CHIP_VALUES = [10, 50, 100, 500] 
+MIN_BET, MAX_BET = 10, 500
+INSURANCE_BUTTON = pygame.Rect(WIDTH//2 - 75, HEIGHT - 200, 150, 50)
+SPLIT_BUTTON = pygame.Rect(WIDTH//2 + 200, HEIGHT - 100, 100, 50)
+
+# Load images
+def load_image(path, size=None):
+    try:
+        image = pygame.image.load(path)
+        if size:
+            image = pygame.transform.scale(image, size)
+        return image
+    except Exception as e:
+        print(f"Error loading image: {e}")
+        # Create a placeholder image with text when loading fails
+        surf = pygame.Surface(size if size else (CARD_WIDTH, CARD_HEIGHT))
+        surf.fill((200, 200, 200))
+        return surf
+
 pygame.mixer.init()  # Initialize the mixer module
+
+# Load assets
+
 card_flip = pygame.mixer.Sound(os.path.join("assets", "sounds", "card_flip.wav"))
 chip_place = pygame.mixer.Sound(os.path.join("assets", "sounds", "chip_place.wav"))
 win = pygame.mixer.Sound(os.path.join("assets", "sounds", "win.wav"))
 lose = pygame.mixer.Sound(os.path.join("assets", "sounds", "lose.wav"))
+win.set_volume(0.5)
+lose.set_volume(0.5)
+CASINO_TABLE = load_image(os.path.join("assets", "casino_table.png"), (WIDTH, HEIGHT))
+CARD_BACK = load_image(os.path.join("assets", "cards", "back.png"), (CARD_WIDTH, CARD_HEIGHT))
 
 #Logging Console
 
@@ -49,22 +86,6 @@ sys.stderr = LoggerWriter(logging.error)
 # Example outputs
 print("This is a normal print statement.")  # Gets logged
 sys.stderr.write("This is an error message.\n")  # Gets logged
-
-# Constants
-WIDTH, HEIGHT = 1200, 800
-CARD_WIDTH, CARD_HEIGHT = 71, 96
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-PURPLE = (128, 0, 128)
-GREEN = (34, 139, 34)
-GOLD = (255, 215, 0)
-RED = (220, 20, 60)
-BLUE = (30, 144, 255)
-FONT = pygame.font.Font(None, 36)
-CHIP_VALUES = [10, 50, 100, 500] 
-MIN_BET, MAX_BET = 10, 1000
-INSURANCE_BUTTON = pygame.Rect(WIDTH//2 - 75, HEIGHT - 200, 150, 50)
-SPLIT_BUTTON = pygame.Rect(WIDTH//2 + 200, HEIGHT - 100, 100, 50)
 
 # Achievements
 ACHIEVEMENTS = {
@@ -264,15 +285,16 @@ PROGRESS_REQUIREMENTS = {
 
 # Animation classes (unchanged)
 class CardAnimation:
-    def __init__(self, card, start_pos, end_pos, duration=0.5):
+    def __init__(self, card, start_pos, end_pos, duration=0.5, flip_duration=0.3):
         self.card = card
         self.start_pos = start_pos
         self.end_pos = end_pos
         self.start_time = pygame.time.get_ticks()
         self.duration = duration * 1000  # Convert to milliseconds
+        self.flip_duration = flip_duration * 1000  # Duration of the flip animation
         self.complete = False
-        self.rotation = 0
-        self.scale = 1.0
+        self.flip_progress = 0  # 0 to 1, where 0.5 is fully sideways
+        self.is_flipping = False
         self.current_pos = start_pos
 
     def update(self):
@@ -282,33 +304,44 @@ class CardAnimation:
         if elapsed >= self.duration:
             self.complete = True
             self.current_pos = self.end_pos
-            self.rotation = 0
-            self.scale = 1.0
             return
 
-        # Easing function (ease-out)
+        # Calculate progress (0 to 1)
         progress = elapsed / self.duration
-        progress = 1 - (1 - progress) ** 2
 
-        # Calculate current position
-        x = self.start_pos[0] + (self.end_pos[0] - self.start_pos[0]) * progress
-        y = self.start_pos[1] + (self.end_pos[1] - self.start_pos[1]) * progress
+        # Linear interpolation for position
+        self.current_pos = (
+            self.start_pos[0] + (self.end_pos[0] - self.start_pos[0]) * progress,
+            self.start_pos[1] + (self.end_pos[1] - self.start_pos[1]) * progress
+        )
 
-        # Add some rotation and scaling for effect
-        self.rotation = math.sin(progress * math.pi) * 15
-        self.scale = 1.0 + math.sin(progress * math.pi) * 0.2
+        # Handle flip animation
+        if elapsed < self.flip_duration:
+            self.is_flipping = True
+            self.flip_progress = elapsed / self.flip_duration
+        else:
+            self.is_flipping = False
 
-        self.current_pos = (x, y)
-
-    def draw(self, screen, image):
+    def draw(self, screen, front_image, back_image):
         if self.complete:
-            screen.blit(image, self.current_pos)
+            screen.blit(front_image, self.end_pos)
             return
 
-        # Create a rotated and scaled version of the card
-        rotated_image = pygame.transform.rotozoom(image, self.rotation, self.scale)
-        new_rect = rotated_image.get_rect(center=(self.current_pos[0] + CARD_WIDTH/2, self.current_pos[1] + CARD_HEIGHT/2))
-        screen.blit(rotated_image, new_rect.topleft)
+        if self.is_flipping:
+            # Draw the flip animation
+            if self.flip_progress < 0.5:
+                # First half: show back image, scale horizontally
+                scale_x = 1 - (self.flip_progress * 2)
+                scaled_image = pygame.transform.scale(back_image, (int(CARD_WIDTH * scale_x), CARD_HEIGHT))
+                screen.blit(scaled_image, (self.current_pos[0] + (CARD_WIDTH - scaled_image.get_width()) // 2, self.current_pos[1]))
+            else:
+                # Second half: show front image, scale horizontally
+                scale_x = (self.flip_progress - 0.5) * 2
+                scaled_image = pygame.transform.scale(front_image, (int(CARD_WIDTH * scale_x), CARD_HEIGHT))
+                screen.blit(scaled_image, (self.current_pos[0] + (CARD_WIDTH - scaled_image.get_width()) // 2, self.current_pos[1]))
+        else:
+            # Draw the card at the current position without flipping
+            screen.blit(front_image, self.current_pos)
 
 class ChipAnimation:
     def __init__(self, value, start_pos, end_pos, duration=0.5):
@@ -344,6 +377,7 @@ class ChipAnimation:
         y -= math.sin(progress * math.pi) * 100
 
         self.current_pos = (x, y)
+
 
 class TextEffect:
     def __init__(self, text, position, color, duration=2.0, size_start=36, size_end=66):
@@ -465,24 +499,6 @@ class ParticleSystem:
             gfxdraw.aacircle(particle_surf, radius, radius, radius, color_with_alpha)
 
             screen.blit(particle_surf, (pos[0] - radius, pos[1] - radius))
-
-# Load images
-def load_image(path, size=None):
-    try:
-        image = pygame.image.load(path)
-        if size:
-            image = pygame.transform.scale(image, size)
-        return image
-    except Exception as e:
-        print(f"Error loading image: {e}")
-        # Create a placeholder image with text when loading fails
-        surf = pygame.Surface(size if size else (CARD_WIDTH, CARD_HEIGHT))
-        surf.fill((200, 200, 200))
-        return surf
-
-# Load assets
-CASINO_TABLE = load_image(os.path.join("assets", "casino_table.png"), (WIDTH, HEIGHT))
-CARD_BACK = load_image(os.path.join("assets", "cards", "back.png"), (CARD_WIDTH, CARD_HEIGHT))
 
 # Load card images
 card_images = {}
@@ -623,36 +639,19 @@ def unlock_achievement(achievement_key, achievements_unlocked, text_effects):
     return None
 
 def get_card_value(card):
-    """
-    Get the numerical value of a card.
-
-    Parameters:
-    card (tuple): A card tuple, where the first element is the rank
-
-    Returns:
-    int: The numerical value of the card (number cards: face value, face cards: 10, ace: 11)
-    """
-    # Extract the rank from the tuple
-    rank = card[0]  # Assuming the first element of the tuple is the rank
-
-    # Handle face cards
-    if rank in ['K', 'Q', 'J']:
+    rank = card[0]  # Extract the rank from the card tuple
+    if rank in ['jack', 'queen', 'king']:
         return 10
-    # Handle ace
-    elif rank == 'A':
-        return 11  # Ace is worth 11 by default (can be 1 in calculate_hand when needed)
-    # Handle 10
+    elif rank == 'ace':
+        return 11
     elif rank == '10':
         return 10
-    # Handle number cards (2-9)
     else:
         try:
-            return int(rank)  # Try to convert to integer
+            return int(rank)  # For ranks 2-9
         except ValueError:
-            # If we got here, print debug info
             print(f"Warning: Unexpected card format: {card}, rank: {rank}")
-            # Return a default value to prevent crashing
-            return 0
+            return 0  # Default value to prevent crashes
 
 # Function to check achievements
 def check_achievements(game_state, result, player_hand, dealer_hand, player_money, current_bet, 
@@ -1036,10 +1035,13 @@ def main_menu():
 
 # Main game function
 def main():
+    dealer_welcome = pygame.mixer.Sound("assets/sounds/dealer_welcome.wav")
+    dealer_welcome.play()
     # Set up display
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Blackjack Deluxe")
     clock = pygame.time.Clock()
+    
 
     # Initialize game state
     deck = shuffle_deck()
@@ -1123,6 +1125,9 @@ def main():
                     # Check if player clicked on deal button
                     if deal_button.collidepoint(mouse_pos) and current_bet >= MIN_BET:
                         game_state = "DEALING"
+
+                        dealer_hit_or_stand = pygame.mixer.Sound("assets/sounds/hit_stand_double.wav")
+                        dealer_hit_or_stand.play()
 
                         # Reset player hands for new game
                         player_hands = [[]]
@@ -1218,6 +1223,8 @@ def main():
                         # Check if player busts
                         if calculate_hand(player_hand) > 21:
                             if current_hand_index < len(player_hands) - 1:
+                                player_bust = pygame.mixer.Sound("assets/sounds/player_bust.wav")
+                                player_bust.play()
                                 # If there are more split hands, move to the next one
                                 split_results.append("BUST!")
                                 current_hand_index += 1
@@ -1231,6 +1238,8 @@ def main():
                                 else:
                                     game_state = "GAME_OVER"
                                     result = "BUST!"
+                                    player_bust = pygame.mixer.Sound("assets/sounds/player_bust.wav")
+                                    player_bust.play()
                                     show_dealer_cards = True
                                     player_money = int(player_money-current_bet)
                                     text_effects.append(TextEffect(
@@ -1250,6 +1259,8 @@ def main():
                         if current_hand_index < len(player_hands) - 1:
                             # If there are more split hands, move to the next one
                             split_results.append("STAND")
+                            standing = pygame.mixer.Sound("assets/sounds/standing.wav")
+                            standing.play()
                             current_hand_index += 1
                         else:
                             # If this is the last hand, move to dealer's turn
@@ -1270,6 +1281,10 @@ def main():
                                 (WIDTH // 2 - 100, HEIGHT - 150),
                                 (WIDTH // 2, HEIGHT - 200)
                             ))
+
+                            double = pygame.mixer.Sound("assets/sounds/double_down.wav")
+                            double.play()
+
                             chip_place.play()
 
                             # Deal one card to player
@@ -1312,6 +1327,9 @@ def main():
                             # Create a new hand with the second card
                             new_hand = [player_hand.pop()]
                             player_hands.append(new_hand)
+
+                            split = pygame.mixer.Sound("assets/sounds/split_hand.wav")
+                            split.play()
 
                             # Add animation for splitting chips
                             chip_animations.append(ChipAnimation(
@@ -1396,6 +1414,8 @@ def main():
                         else:
                             game_state = "GAME_OVER"
                             result = "BLACKJACK!"
+                            nat_blackjack = pygame.mixer.Sound("assets/sounds/nat_blackjack.wav")
+                            nat_blackjack.play()
                             show_dealer_cards = True
                             # Blackjack pays 3:2
                             player_money += int(current_bet * 2.5)
@@ -1476,20 +1496,34 @@ def main():
                         # Handle double down (bet is doubled)
                         hand_bet = current_bet * 2 if hand_result == "DOUBLE" else current_bet
 
-                        if dealer_value > 21:
+                        if player_value > 21:
+                        # Player busts, player loses
+                            player_lose = pygame.mixer.Sound("assets/sounds/player_lose.wav")
+                            player_lose.play()
+                            player_money = int(player_money - hand_bet)
+                            split_results[i] = "LOSE"
+                        elif dealer_value > 21 and player_value <= 21:
                             # Dealer busts, player wins
+                            player_win = pygame.mixer.Sound("assets/sounds/player_win.wav")
+                            player_win.play()
                             total_winnings += hand_bet * 2  # Return bet + winnings
                             split_results[i] = "WIN"
                         elif dealer_value > player_value:
                             # Dealer wins
-                            player_money = int(player_money-current_bet)
+                            player_lose = pygame.mixer.Sound("assets/sounds/player_lose.wav")
+                            player_lose.play()
+                            player_money = int(player_money - hand_bet)
                             split_results[i] = "LOSE"
-                        elif dealer_value < player_value:
+                        elif dealer_value < player_value and player_value <= 21:
                             # Player wins
+                            player_win = pygame.mixer.Sound("assets/sounds/player_win.wav")
+                            player_win.play()
                             total_winnings += hand_bet * 2  # Return bet + winnings
                             split_results[i] = "WIN"
                         else:
                             # Push (tie)
+                            push = pygame.mixer.Sound("assets/sounds/push.wav")
+                            push.play()
                             total_winnings += hand_bet  # Return bet
                             split_results[i] = "PUSH"
 
@@ -1513,6 +1547,8 @@ def main():
 
                     if dealer_value > 21:
                         result = "DEALER BUSTS!"
+                        dealer_busts = pygame.mixer.Sound("assets/sounds/dealer_bust.wav")
+                        dealer_busts.play()
                         player_money += current_bet * 2  # Return bet + winnings
                         text_effects.append(TextEffect(
                             result,
@@ -1522,6 +1558,8 @@ def main():
                         win.play()
                     elif dealer_value > player_value:
                         result = "DEALER WINS!"
+                        dealer_wins = pygame.mixer.Sound("assets/sounds/dealer_win.wav")
+                        dealer_wins.play()
                         player_money = int(player_money-current_bet)
                         text_effects.append(TextEffect(
                             result,
@@ -1531,6 +1569,8 @@ def main():
                         lose.play()
                     elif dealer_value < player_value:
                         result = "YOU WIN!"
+                        player_wins = pygame.mixer.Sound("assets/sounds/player_win.wav")
+                        player_wins.play()
                         player_money += current_bet * 2  # Return bet + winnings
                         text_effects.append(TextEffect(
                             result,
@@ -1541,6 +1581,8 @@ def main():
                     else:
                         result = "PUSH"
                         player_money += current_bet  # Return bet
+                        push = pygame.mixer.Sound("assets/sounds/push.wav")
+                        push.play()
                         text_effects.append(TextEffect(
                             result,
                             (WIDTH//2, HEIGHT//2),
@@ -1708,15 +1750,17 @@ def main():
             if animation.complete:
                 continue
 
-            # Check if this is the dealer's face down card
+    # Check if this is the dealer's face down card
             is_dealer_face_down = False
             if card in dealer_hand and dealer_hand.index(card) == 1 and not show_dealer_cards:
                 is_dealer_face_down = True
 
             if is_dealer_face_down:
-                animation.draw(screen, CARD_BACK)
+                # For the dealer's face-down card, use CARD_BACK for both front and back
+                animation.draw(screen, card_images[card], CARD_BACK)
             else:
-                animation.draw(screen, card_images[card])
+                # For other cards, use the card's front image and CARD_BACK as the back image
+                animation.draw(screen, card_images[card], CARD_BACK)
 
         # Draw chip animations
         for animation in chip_animations:
@@ -1751,6 +1795,18 @@ def main():
                 achievement_font = pygame.font.Font(None, 24)
                 ach_text = achievement_font.render(ACHIEVEMENTS[key]["name"], True, WHITE)
                 screen.blit(ach_text, (WIDTH - 280, 200 + i * 40))
+
+        # In the main game loop, add these checks:
+        if not deck:
+            deck = shuffle_deck()  # Reshuffle if the deck is empty
+
+        if player_money <= 0:
+            over = pygame.mixer.Sound("assets/sounds/game_over.wav")
+            over.play()
+            running = False  # End the game
+
+        if current_bet < 0:
+            current_bet = 0  # Prevent negative bets
 
         # Display FPS
         fps_text = FONT.render(f"FPS: {int(clock.get_fps())}", True, WHITE)
