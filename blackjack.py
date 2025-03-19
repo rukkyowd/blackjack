@@ -13,6 +13,7 @@ WIDTH, HEIGHT = 1200, 800
 CARD_WIDTH, CARD_HEIGHT = 71, 96
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
+PURPLE = (128, 0, 128)
 GREEN = (34, 139, 34)
 GOLD = (255, 215, 0)
 RED = (220, 20, 60)
@@ -578,6 +579,38 @@ def unlock_achievement(achievement_key, achievements_unlocked, text_effects):
         particle_effects = ParticleSystem((WIDTH // 2, HEIGHT // 2 + 100), GOLD, count=50, duration=2.0)
         return particle_effects
     return None
+
+def get_card_value(card):
+    """
+    Get the numerical value of a card.
+
+    Parameters:
+    card (tuple): A card tuple, where the first element is the rank
+
+    Returns:
+    int: The numerical value of the card (number cards: face value, face cards: 10, ace: 11)
+    """
+    # Extract the rank from the tuple
+    rank = card[0]  # Assuming the first element of the tuple is the rank
+
+    # Handle face cards
+    if rank in ['K', 'Q', 'J']:
+        return 10
+    # Handle ace
+    elif rank == 'A':
+        return 11  # Ace is worth 11 by default (can be 1 in calculate_hand when needed)
+    # Handle 10
+    elif rank == '10':
+        return 10
+    # Handle number cards (2-9)
+    else:
+        try:
+            return int(rank)  # Try to convert to integer
+        except ValueError:
+            # If we got here, print debug info
+            print(f"Warning: Unexpected card format: {card}, rank: {rank}")
+            # Return a default value to prevent crashing
+            return 0
 
 # Function to check achievements
 def check_achievements(game_state, result, player_hand, dealer_hand, player_money, current_bet, 
@@ -1489,7 +1522,6 @@ def main():
                 value_text = FONT.render(f"Dealer: {calculate_hand(dealer_hand)}", True, WHITE)
                 screen.blit(value_text, (WIDTH//2 - 60, HEIGHT//2 - 200))
 
-        # Draw player's hands
         for hand_index, hand in enumerate(player_hands):
             if hand:
                 y_offset = hand_index * 100  # Offset for split hands
@@ -1498,9 +1530,10 @@ def main():
                     screen.blit(card_images[card], 
                                 (WIDTH//2 - CARD_WIDTH - 10 + i * (CARD_WIDTH + 20), HEIGHT//2 + 50 + y_offset))
 
-                # Draw hand value
+                # Draw hand value - FIXED POSITION
+                # Move the text to the left side of the cards to avoid overlap
                 value_text = FONT.render(f"Hand {hand_index + 1}: {calculate_hand(hand)}", True, WHITE)
-                screen.blit(value_text, (WIDTH//2 - 60, HEIGHT//2 + 160 + y_offset))
+                screen.blit(value_text, (WIDTH//2 - 250, HEIGHT//2 + 80 + y_offset))  # Changed from HEIGHT//2 + 160 + y_offset
 
                 # For split hands in game over state, show result
                 if game_state == "GAME_OVER" and len(player_hands) > 1 and hand_index < len(split_results):
@@ -1508,7 +1541,8 @@ def main():
                                              GREEN if split_results[hand_index] == "WIN" else 
                                              RED if split_results[hand_index] == "LOSE" or split_results[hand_index] == "BUST!" else 
                                              BLUE)
-                    screen.blit(result_text, (WIDTH//2 + 100, HEIGHT//2 + 160 + y_offset))
+                    # Also move the result text to be adjacent to the hand value
+                    screen.blit(result_text, (WIDTH//2 - 100, HEIGHT//2 + 80 + y_offset))  # Changed from WIDTH//2 + 100, HEIGHT//2 + 160 + y_offset
 
         # Draw money and bet information
         money_text = FONT.render(f"Money: ${player_money}", True, GOLD)
