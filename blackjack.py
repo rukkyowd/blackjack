@@ -21,10 +21,11 @@ GOLD = (255, 215, 0)
 RED = (220, 20, 60)
 BLUE = (30, 144, 255)
 FONT = pygame.font.Font(None, 36)
-CHIP_VALUES = [10, 50, 100, 500] 
+CHIP_VALUES = [10, 50, 100, 500]
 MIN_BET, MAX_BET = 10, 500
-INSURANCE_BUTTON = pygame.Rect(WIDTH//2 - 75, HEIGHT - 200, 150, 50)
-SPLIT_BUTTON = pygame.Rect(WIDTH//2 + 200, HEIGHT - 100, 100, 50)
+INSURANCE_BUTTON = pygame.Rect(WIDTH // 2 - 75, HEIGHT - 200, 150, 50)
+SPLIT_BUTTON = pygame.Rect(WIDTH // 2 + 200, HEIGHT - 100, 100, 50)
+
 
 # Load images
 def load_image(path, size=None):
@@ -40,18 +41,23 @@ def load_image(path, size=None):
         surf.fill((200, 200, 200))
         return surf
 
+
 pygame.mixer.init()  # Initialize the mixer module
 
 # Load assets
 
-card_flip = pygame.mixer.Sound(os.path.join("assets", "sounds", "card_flip.wav"))
-chip_place = pygame.mixer.Sound(os.path.join("assets", "sounds", "chip_place.wav"))
+card_flip = pygame.mixer.Sound(
+    os.path.join("assets", "sounds", "card_flip.wav"))
+chip_place = pygame.mixer.Sound(
+    os.path.join("assets", "sounds", "chip_place.wav"))
 win = pygame.mixer.Sound(os.path.join("assets", "sounds", "win.wav"))
 lose = pygame.mixer.Sound(os.path.join("assets", "sounds", "lose.wav"))
 win.set_volume(0.5)
 lose.set_volume(0.5)
-CASINO_TABLE = load_image(os.path.join("assets", "casino_table.png"), (WIDTH, HEIGHT))
-CARD_BACK = load_image(os.path.join("assets", "cards", "back.png"), (CARD_WIDTH, CARD_HEIGHT))
+CASINO_TABLE = load_image(os.path.join("assets", "casino_table.png"),
+                          (WIDTH, HEIGHT))
+CARD_BACK = load_image(os.path.join("assets", "cards", "back.png"),
+                       (CARD_WIDTH, CARD_HEIGHT))
 
 #Logging Console
 
@@ -64,11 +70,12 @@ logging.basicConfig(
     handlers=[
         logging.FileHandler(log_file, mode="w"),  # Overwrite file
         logging.StreamHandler(sys.stdout)  # Print to console
-    ]
-)
+    ])
+
 
 # Custom class to redirect print() and errors to logging
 class LoggerWriter:
+
     def __init__(self, level):
         self.level = level
 
@@ -78,6 +85,7 @@ class LoggerWriter:
 
     def flush(self):  # Needed for compatibility
         pass
+
 
 # Redirect stdout and stderr
 sys.stdout = LoggerWriter(logging.info)
@@ -96,7 +104,8 @@ ACHIEVEMENTS = {
     },
     "blackjack": {
         "name": "Blackjack!",
-        "description": "Get a natural Blackjack (21 with your first two cards).",
+        "description":
+        "Get a natural Blackjack (21 with your first two cards).",
         "unlocked": False
     },
     "high_roller": {
@@ -283,9 +292,16 @@ PROGRESS_REQUIREMENTS = {
     "chip_collector": 10000
 }
 
+
 # Animation classes (unchanged)
 class CardAnimation:
-    def __init__(self, card, start_pos, end_pos, duration=0.5, flip_duration=0.3):
+
+    def __init__(self,
+                 card,
+                 start_pos,
+                 end_pos,
+                 duration=0.5,
+                 flip_duration=0.3):
         self.card = card
         self.start_pos = start_pos
         self.end_pos = end_pos
@@ -310,10 +326,10 @@ class CardAnimation:
         progress = elapsed / self.duration
 
         # Linear interpolation for position
-        self.current_pos = (
-            self.start_pos[0] + (self.end_pos[0] - self.start_pos[0]) * progress,
-            self.start_pos[1] + (self.end_pos[1] - self.start_pos[1]) * progress
-        )
+        self.current_pos = (self.start_pos[0] +
+                            (self.end_pos[0] - self.start_pos[0]) * progress,
+                            self.start_pos[1] +
+                            (self.end_pos[1] - self.start_pos[1]) * progress)
 
         # Handle flip animation
         if elapsed < self.flip_duration:
@@ -332,18 +348,28 @@ class CardAnimation:
             if self.flip_progress < 0.5:
                 # First half: show back image, scale horizontally
                 scale_x = 1 - (self.flip_progress * 2)
-                scaled_image = pygame.transform.scale(back_image, (int(CARD_WIDTH * scale_x), CARD_HEIGHT))
-                screen.blit(scaled_image, (self.current_pos[0] + (CARD_WIDTH - scaled_image.get_width()) // 2, self.current_pos[1]))
+                scaled_image = pygame.transform.scale(
+                    back_image, (int(CARD_WIDTH * scale_x), CARD_HEIGHT))
+                screen.blit(scaled_image,
+                            (self.current_pos[0] +
+                             (CARD_WIDTH - scaled_image.get_width()) // 2,
+                             self.current_pos[1]))
             else:
                 # Second half: show front image, scale horizontally
                 scale_x = (self.flip_progress - 0.5) * 2
-                scaled_image = pygame.transform.scale(front_image, (int(CARD_WIDTH * scale_x), CARD_HEIGHT))
-                screen.blit(scaled_image, (self.current_pos[0] + (CARD_WIDTH - scaled_image.get_width()) // 2, self.current_pos[1]))
+                scaled_image = pygame.transform.scale(
+                    front_image, (int(CARD_WIDTH * scale_x), CARD_HEIGHT))
+                screen.blit(scaled_image,
+                            (self.current_pos[0] +
+                             (CARD_WIDTH - scaled_image.get_width()) // 2,
+                             self.current_pos[1]))
         else:
             # Draw the card at the current position without flipping
             screen.blit(front_image, self.current_pos)
 
+
 class ChipAnimation:
+
     def __init__(self, value, start_pos, end_pos, duration=0.5):
         self.value = value
         self.start_pos = start_pos
@@ -370,8 +396,10 @@ class ChipAnimation:
             progress = -1 + (4 * (progress - 0.5) * (2 - progress))
 
         # Calculate current position with a slight arc
-        x = self.start_pos[0] + (self.end_pos[0] - self.start_pos[0]) * progress
-        y = self.start_pos[1] + (self.end_pos[1] - self.start_pos[1]) * progress
+        x = self.start_pos[0] + (self.end_pos[0] -
+                                 self.start_pos[0]) * progress
+        y = self.start_pos[1] + (self.end_pos[1] -
+                                 self.start_pos[1]) * progress
 
         # Add arc effect
         y -= math.sin(progress * math.pi) * 100
@@ -380,7 +408,14 @@ class ChipAnimation:
 
 
 class TextEffect:
-    def __init__(self, text, position, color, duration=2.0, size_start=36, size_end=66):
+
+    def __init__(self,
+                 text,
+                 position,
+                 color,
+                 duration=2.0,
+                 size_start=36,
+                 size_end=66):
         self.text = text
         self.position = position
         self.color = color
@@ -406,7 +441,8 @@ class TextEffect:
         if progress < 0.3:
             # Grow effect
             size_progress = progress / 0.3
-            self.current_size = self.size_start + (self.size_end - self.size_start) * size_progress
+            self.current_size = self.size_start + (
+                self.size_end - self.size_start) * size_progress
             self.alpha = 255
         else:
             # Fade out
@@ -423,7 +459,9 @@ class TextEffect:
         text_rect = text_surf.get_rect(center=self.position)
         screen.blit(text_surf, text_rect)
 
+
 class ParticleSystem:
+
     def __init__(self, position, color, count=30, duration=1.0):
         self.particles = []
         self.start_time = pygame.time.get_ticks()
@@ -437,12 +475,17 @@ class ParticleSystem:
             lifetime = random.uniform(0.5, 1.0)
 
             self.particles.append({
-                'pos': position,
+                'pos':
+                position,
                 'velocity': (math.cos(angle) * speed, math.sin(angle) * speed),
-                'size': size,
-                'color': color,
-                'start_time': pygame.time.get_ticks(),
-                'lifetime': lifetime * 1000
+                'size':
+                size,
+                'color':
+                color,
+                'start_time':
+                pygame.time.get_ticks(),
+                'lifetime':
+                lifetime * 1000
             })
 
     def update(self):
@@ -462,9 +505,9 @@ class ParticleSystem:
 
             # Update position
             particle['pos'] = (
-                particle['pos'][0] + particle['velocity'][0] * 0.016,  # 16ms frame time
-                particle['pos'][1] + particle['velocity'][1] * 0.016
-            )
+                particle['pos'][0] +
+                particle['velocity'][0] * 0.016,  # 16ms frame time
+                particle['pos'][1] + particle['velocity'][1] * 0.016)
 
             # Add gravity
             particle['velocity'] = (
@@ -491,35 +534,57 @@ class ParticleSystem:
             radius = int(particle['size'] * (1 - progress * 0.5))
 
             # Create a surface for this particle with alpha
-            particle_surf = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+            particle_surf = pygame.Surface((radius * 2, radius * 2),
+                                           pygame.SRCALPHA)
             color_with_alpha = (*particle['color'], int(alpha))
 
             # Draw antialiased circle
-            gfxdraw.filled_circle(particle_surf, radius, radius, radius, color_with_alpha)
-            gfxdraw.aacircle(particle_surf, radius, radius, radius, color_with_alpha)
+            gfxdraw.filled_circle(particle_surf, radius, radius, radius,
+                                  color_with_alpha)
+            gfxdraw.aacircle(particle_surf, radius, radius, radius,
+                             color_with_alpha)
 
             screen.blit(particle_surf, (pos[0] - radius, pos[1] - radius))
+
 
 # Load card images
 card_images = {}
 suits = ['hearts', 'diamonds', 'clubs', 'spades']
-values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'jack', 'queen', 'king', 'ace']
+values = [
+    '2', '3', '4', '5', '6', '7', '8', '9', '10', 'jack', 'queen', 'king',
+    'ace'
+]
 
 for suit in suits:
     for value in values:
         filename = f"{value}_of_{suit}.png"
-        card_images[(value, suit)] = load_image(os.path.join("assets", "cards", filename), (CARD_WIDTH, CARD_HEIGHT))
+        card_images[(value, suit)] = load_image(
+            os.path.join("assets", "cards", filename),
+            (CARD_WIDTH, CARD_HEIGHT))
 
 # Load chip images
 chip_images = {}
 for value in CHIP_VALUES:
-    chip_images[value] = load_image(os.path.join("assets", "chips", f"chip_{value}.png"), (60, 60))
+    chip_images[value] = load_image(
+        os.path.join("assets", "chips", f"chip_{value}.png"), (60, 60))
 
 # Card values
 card_values = {
-    '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10,
-    'jack': 10, 'queen': 10, 'king': 10, 'ace': 11
+    '2': 2,
+    '3': 3,
+    '4': 4,
+    '5': 5,
+    '6': 6,
+    '7': 7,
+    '8': 8,
+    '9': 9,
+    '10': 10,
+    'jack': 10,
+    'queen': 10,
+    'king': 10,
+    'ace': 11
 }
+
 
 # Shuffle deck
 def shuffle_deck():
@@ -527,12 +592,14 @@ def shuffle_deck():
     random.shuffle(deck)
     return deck
 
+
 # Deal a card
 def deal_card(deck):
     if not deck:  # Check if deck is empty
         new_deck = shuffle_deck()
         deck.extend(new_deck)
     return deck.pop()
+
 
 # Calculate hand value
 def calculate_hand(hand):
@@ -543,8 +610,16 @@ def calculate_hand(hand):
         aces -= 1
     return value
 
+
 # Move draw_glowing_button outside of calculate_hand
-def draw_glowing_button(screen, rect, text, text_color, button_color, glow_color, glow_size=10, pulse=True):
+def draw_glowing_button(screen,
+                        rect,
+                        text,
+                        text_color,
+                        button_color,
+                        glow_color,
+                        glow_size=10,
+                        pulse=True):
     # Calculate pulse
     current_time = pygame.time.get_ticks() / 1000.0
     pulse_factor = 0.5 + math.sin(current_time * 5) * 0.5 if pulse else 1.0
@@ -552,18 +627,18 @@ def draw_glowing_button(screen, rect, text, text_color, button_color, glow_color
     # Draw outer glow (multiple layers with decreasing alpha)
     for i in range(glow_size, 0, -1):
         alpha = int(180 * (i / glow_size) * pulse_factor)
-        expanded_rect = pygame.Rect(
-            rect.left - i, rect.top - i,
-            rect.width + i * 2, rect.height + i * 2
-        )
-        glow_surf = pygame.Surface((expanded_rect.width, expanded_rect.height), pygame.SRCALPHA)
+        expanded_rect = pygame.Rect(rect.left - i, rect.top - i,
+                                    rect.width + i * 2, rect.height + i * 2)
+        glow_surf = pygame.Surface((expanded_rect.width, expanded_rect.height),
+                                   pygame.SRCALPHA)
         # Ensure glow_color is a 3-tuple (RGB) before adding alpha
         if len(glow_color) == 3:
             glow_color_with_alpha = (*glow_color, alpha)
         else:
             glow_color_with_alpha = glow_color  # Assume it's already RGBA
-        pygame.draw.rect(glow_surf, glow_color_with_alpha, 
-                         (i, i, rect.width, rect.height), 
+        pygame.draw.rect(glow_surf,
+                         glow_color_with_alpha,
+                         (i, i, rect.width, rect.height),
                          border_radius=12)
         screen.blit(glow_surf, (expanded_rect.left, expanded_rect.top))
 
@@ -575,8 +650,7 @@ def draw_glowing_button(screen, rect, text, text_color, button_color, glow_color
             button_color[1] * (1 - progress * 0.3),
             button_color[2] * (1 - progress * 0.3)
         ]
-        pygame.draw.line(screen, color, 
-                         (rect.left, rect.top + i), 
+        pygame.draw.line(screen, color, (rect.left, rect.top + i),
                          (rect.left + rect.width - 1, rect.top + i))
 
     # Draw button text
@@ -584,6 +658,7 @@ def draw_glowing_button(screen, rect, text, text_color, button_color, glow_color
     text_surf = font.render(text, True, text_color)
     text_rect = text_surf.get_rect(center=rect.center)
     screen.blit(text_surf, text_rect)
+
 
 # Calculate hand value
 def calculate_hand(hand):
@@ -594,6 +669,7 @@ def calculate_hand(hand):
         aces -= 1
     return value
 
+
 # Draw chips for betting
 def draw_chips(screen, current_bet):
     x, y = WIDTH // 2 - 250, HEIGHT - 150
@@ -602,7 +678,8 @@ def draw_chips(screen, current_bet):
         glow_surf = pygame.Surface((80, 80), pygame.SRCALPHA)
         for i in range(20, 0, -1):
             alpha = 10 + i * 3
-            pygame.draw.circle(glow_surf, (255, 215, 0, alpha), (40, 40), 30 + i)
+            pygame.draw.circle(glow_surf, (255, 215, 0, alpha), (40, 40),
+                               30 + i)
         screen.blit(glow_surf, (x - 10, y - 10))
 
         # Draw chip
@@ -615,9 +692,11 @@ def draw_chips(screen, current_bet):
         screen.blit(text, (x + 15, y + 65))
         x += 120
 
+
 # Create card deal animation
 def create_deal_animation(card, deck_pos, target_pos, delay=0):
     return CardAnimation(card, deck_pos, target_pos, duration=0.3)
+
 
 # Function to handle unlocking achievements
 def unlock_achievement(achievement_key, achievements_unlocked, text_effects):
@@ -626,17 +705,21 @@ def unlock_achievement(achievement_key, achievements_unlocked, text_effects):
         achievements_unlocked.append(achievement_key)
 
         # Create text effect for achievement notification
-        text_effects.append(TextEffect(
-            f"Achievement Unlocked: {ACHIEVEMENTS[achievement_key]['name']}!", 
-            (WIDTH // 2, HEIGHT // 2 + 100), 
-            GOLD,
-            duration=3.0
-        ))
+        text_effects.append(
+            TextEffect(
+                f"Achievement Unlocked: {ACHIEVEMENTS[achievement_key]['name']}!",
+                (WIDTH // 2, HEIGHT // 2 + 100),
+                GOLD,
+                duration=3.0))
 
         # Also create a particle effect for visual flair
-        particle_effects = ParticleSystem((WIDTH // 2, HEIGHT // 2 + 100), GOLD, count=50, duration=2.0)
+        particle_effects = ParticleSystem((WIDTH // 2, HEIGHT // 2 + 100),
+                                          GOLD,
+                                          count=50,
+                                          duration=2.0)
         return particle_effects
     return None
+
 
 def get_card_value(card):
     rank = card[0]  # Extract the rank from the card tuple
@@ -653,9 +736,11 @@ def get_card_value(card):
             print(f"Warning: Unexpected card format: {card}, rank: {rank}")
             return 0  # Default value to prevent crashes
 
+
 # Function to check achievements
-def check_achievements(game_state, result, player_hand, dealer_hand, player_money, current_bet, 
-                      achievements_unlocked, text_effects, particle_systems, stats):
+def check_achievements(game_state, result, player_hand, dealer_hand,
+                       player_money, current_bet, achievements_unlocked,
+                       text_effects, particle_systems, stats):
     # Extract stats for easier access
     win_count = stats["win_count"]
     bust_count = stats["bust_count"]
@@ -677,33 +762,44 @@ def check_achievements(game_state, result, player_hand, dealer_hand, player_mone
 
         # First win achievement
         if not ACHIEVEMENTS["first_win"]["unlocked"]:
-            particles = unlock_achievement("first_win", achievements_unlocked, text_effects)
+            particles = unlock_achievement("first_win", achievements_unlocked,
+                                           text_effects)
             if particles:
                 particle_systems.append(particles)
 
         # Five wins achievement
         if not ACHIEVEMENTS["five_wins"]["unlocked"]:
             PROGRESS_TRACKERS["five_wins"] += 1
-            if PROGRESS_TRACKERS["five_wins"] >= PROGRESS_REQUIREMENTS["five_wins"]:
-                particles = unlock_achievement("five_wins", achievements_unlocked, text_effects)
+            if PROGRESS_TRACKERS["five_wins"] >= PROGRESS_REQUIREMENTS[
+                    "five_wins"]:
+                particles = unlock_achievement("five_wins",
+                                               achievements_unlocked,
+                                               text_effects)
                 if particles:
                     particle_systems.append(particles)
 
         # Lucky streak achievement
-        if stats["consecutive_wins"] >= 3 and not ACHIEVEMENTS["lucky_streak"]["unlocked"]:
-            particles = unlock_achievement("lucky_streak", achievements_unlocked, text_effects)
+        if stats["consecutive_wins"] >= 3 and not ACHIEVEMENTS["lucky_streak"][
+                "unlocked"]:
+            particles = unlock_achievement("lucky_streak",
+                                           achievements_unlocked, text_effects)
             if particles:
                 particle_systems.append(particles)
 
         # Blackjack achievement
-        if calculate_hand(player_hand) == 21 and len(player_hand) == 2 and not ACHIEVEMENTS["blackjack"]["unlocked"]:
-            particles = unlock_achievement("blackjack", achievements_unlocked, text_effects)
+        if calculate_hand(player_hand) == 21 and len(
+                player_hand
+        ) == 2 and not ACHIEVEMENTS["blackjack"]["unlocked"]:
+            particles = unlock_achievement("blackjack", achievements_unlocked,
+                                           text_effects)
             if particles:
                 particle_systems.append(particles)
 
         # Lowballer achievement
-        if calculate_hand(player_hand) <= 5 and not ACHIEVEMENTS["lowballer"]["unlocked"]:
-            particles = unlock_achievement("lowballer", achievements_unlocked, text_effects)
+        if calculate_hand(player_hand
+                          ) <= 5 and not ACHIEVEMENTS["lowballer"]["unlocked"]:
+            particles = unlock_achievement("lowballer", achievements_unlocked,
+                                           text_effects)
             if particles:
                 particle_systems.append(particles)
 
@@ -711,16 +807,22 @@ def check_achievements(game_state, result, player_hand, dealer_hand, player_mone
         if 'ace' in [card[0] for card in player_hand]:
             if not ACHIEVEMENTS["ace_master"]["unlocked"]:
                 PROGRESS_TRACKERS["ace_master"] += 1
-                if PROGRESS_TRACKERS["ace_master"] >= PROGRESS_REQUIREMENTS["ace_master"]:
-                    particles = unlock_achievement("ace_master", achievements_unlocked, text_effects)
+                if PROGRESS_TRACKERS["ace_master"] >= PROGRESS_REQUIREMENTS[
+                        "ace_master"]:
+                    particles = unlock_achievement("ace_master",
+                                                   achievements_unlocked,
+                                                   text_effects)
                     if particles:
                         particle_systems.append(particles)
 
         # Lucky number 21 achievement
         if not ACHIEVEMENTS["lucky_number_21"]["unlocked"]:
             PROGRESS_TRACKERS["lucky_number_21"] += 1
-            if PROGRESS_TRACKERS["lucky_number_21"] >= PROGRESS_REQUIREMENTS["lucky_number_21"]:
-                particles = unlock_achievement("lucky_number_21", achievements_unlocked, text_effects)
+            if PROGRESS_TRACKERS["lucky_number_21"] >= PROGRESS_REQUIREMENTS[
+                    "lucky_number_21"]:
+                particles = unlock_achievement("lucky_number_21",
+                                               achievements_unlocked,
+                                               text_effects)
                 if particles:
                     particle_systems.append(particles)
 
@@ -731,14 +833,18 @@ def check_achievements(game_state, result, player_hand, dealer_hand, player_mone
         stats["consecutive_losses"] += 1
 
         # Bust artist achievement
-        if stats["consecutive_busts"] >= 5 and not ACHIEVEMENTS["bust_artist"]["unlocked"]:
-            particles = unlock_achievement("bust_artist", achievements_unlocked, text_effects)
+        if stats["consecutive_busts"] >= 5 and not ACHIEVEMENTS["bust_artist"][
+                "unlocked"]:
+            particles = unlock_achievement("bust_artist",
+                                           achievements_unlocked, text_effects)
             if particles:
                 particle_systems.append(particles)
 
         # Unlucky streak achievement
-        if stats["consecutive_losses"] >= 3 and not ACHIEVEMENTS["unlucky_streak"]["unlocked"]:
-            particles = unlock_achievement("unlucky_streak", achievements_unlocked, text_effects)
+        if stats["consecutive_losses"] >= 3 and not ACHIEVEMENTS[
+                "unlucky_streak"]["unlocked"]:
+            particles = unlock_achievement("unlucky_streak",
+                                           achievements_unlocked, text_effects)
             if particles:
                 particle_systems.append(particles)
 
@@ -753,8 +859,11 @@ def check_achievements(game_state, result, player_hand, dealer_hand, player_mone
         # Dealer's nightmare achievement
         if not ACHIEVEMENTS["dealers_nightmare"]["unlocked"]:
             PROGRESS_TRACKERS["dealers_nightmare"] += 1
-            if PROGRESS_TRACKERS["dealers_nightmare"] >= PROGRESS_REQUIREMENTS["dealers_nightmare"]:
-                particles = unlock_achievement("dealers_nightmare", achievements_unlocked, text_effects)
+            if PROGRESS_TRACKERS["dealers_nightmare"] >= PROGRESS_REQUIREMENTS[
+                    "dealers_nightmare"]:
+                particles = unlock_achievement("dealers_nightmare",
+                                               achievements_unlocked,
+                                               text_effects)
                 if particles:
                     particle_systems.append(particles)
 
@@ -767,41 +876,57 @@ def check_achievements(game_state, result, player_hand, dealer_hand, player_mone
         # Push master achievement
         if not ACHIEVEMENTS["push_master"]["unlocked"]:
             PROGRESS_TRACKERS["push_master"] += 1
-            if PROGRESS_TRACKERS["push_master"] >= PROGRESS_REQUIREMENTS["push_master"]:
-                particles = unlock_achievement("push_master", achievements_unlocked, text_effects)
+            if PROGRESS_TRACKERS["push_master"] >= PROGRESS_REQUIREMENTS[
+                    "push_master"]:
+                particles = unlock_achievement("push_master",
+                                               achievements_unlocked,
+                                               text_effects)
                 if particles:
                     particle_systems.append(particles)
 
     # Check for bet-related achievements
     if current_bet >= 500 and not ACHIEVEMENTS["high_roller"]["unlocked"]:
-        particles = unlock_achievement("high_roller", achievements_unlocked, text_effects)
+        particles = unlock_achievement("high_roller", achievements_unlocked,
+                                       text_effects)
         if particles:
             particle_systems.append(particles)
 
     if current_bet >= 500:
         if not ACHIEVEMENTS["big_spender"]["unlocked"]:
             PROGRESS_TRACKERS["big_spender"] += 1
-            if PROGRESS_TRACKERS["big_spender"] >= PROGRESS_REQUIREMENTS["big_spender"]:
-                particles = unlock_achievement("big_spender", achievements_unlocked, text_effects)
+            if PROGRESS_TRACKERS["big_spender"] >= PROGRESS_REQUIREMENTS[
+                    "big_spender"]:
+                particles = unlock_achievement("big_spender",
+                                               achievements_unlocked,
+                                               text_effects)
                 if particles:
                     particle_systems.append(particles)
 
     if current_bet <= 10:
         if not ACHIEVEMENTS["small_bettor"]["unlocked"]:
             PROGRESS_TRACKERS["small_bettor"] += 1
-            if PROGRESS_TRACKERS["small_bettor"] >= PROGRESS_REQUIREMENTS["small_bettor"]:
-                particles = unlock_achievement("small_bettor", achievements_unlocked, text_effects)
+            if PROGRESS_TRACKERS["small_bettor"] >= PROGRESS_REQUIREMENTS[
+                    "small_bettor"]:
+                particles = unlock_achievement("small_bettor",
+                                               achievements_unlocked,
+                                               text_effects)
                 if particles:
                     particle_systems.append(particles)
 
     # Check for special card combinations
-    if len(player_hand) == 2 and all(card[0] == 'ace' for card in player_hand) and not ACHIEVEMENTS["perfect_pair"]["unlocked"]:
-        particles = unlock_achievement("perfect_pair", achievements_unlocked, text_effects)
+    if len(player_hand) == 2 and all(
+            card[0] == 'ace' for card in
+            player_hand) and not ACHIEVEMENTS["perfect_pair"]["unlocked"]:
+        particles = unlock_achievement("perfect_pair", achievements_unlocked,
+                                       text_effects)
         if particles:
             particle_systems.append(particles)
 
-    if len(player_hand) == 3 and all(card[0] == '7' for card in player_hand) and not ACHIEVEMENTS["lucky_7s"]["unlocked"]:
-        particles = unlock_achievement("lucky_7s", achievements_unlocked, text_effects)
+    if len(player_hand) == 3 and all(
+            card[0] == '7' for card in
+            player_hand) and not ACHIEVEMENTS["lucky_7s"]["unlocked"]:
+        particles = unlock_achievement("lucky_7s", achievements_unlocked,
+                                       text_effects)
         if particles:
             particle_systems.append(particles)
 
@@ -814,30 +939,39 @@ def check_achievements(game_state, result, player_hand, dealer_hand, player_mone
         elif card[0] == 'queen':
             queen_suit = card[1]
 
-    if king_suit and queen_suit and king_suit == queen_suit and not ACHIEVEMENTS["royal_flush"]["unlocked"]:
-        particles = unlock_achievement("royal_flush", achievements_unlocked, text_effects)
+    if king_suit and queen_suit and king_suit == queen_suit and not ACHIEVEMENTS[
+            "royal_flush"]["unlocked"]:
+        particles = unlock_achievement("royal_flush", achievements_unlocked,
+                                       text_effects)
         if particles:
             particle_systems.append(particles)
 
     # Money-related achievements
     if player_money >= 1000000 and not ACHIEVEMENTS["millionaire"]["unlocked"]:
-        particles = unlock_achievement("millionaire", achievements_unlocked, text_effects)
+        particles = unlock_achievement("millionaire", achievements_unlocked,
+                                       text_effects)
         if particles:
             particle_systems.append(particles)
 
-    if stats["total_winnings"] >= 10000 and not ACHIEVEMENTS["chip_collector"]["unlocked"]:
-        particles = unlock_achievement("chip_collector", achievements_unlocked, text_effects)
+    if stats["total_winnings"] >= 10000 and not ACHIEVEMENTS["chip_collector"][
+            "unlocked"]:
+        particles = unlock_achievement("chip_collector", achievements_unlocked,
+                                       text_effects)
         if particles:
             particle_systems.append(particles)
 
-    if player_money <= 10 and result == "YOU WIN!" and not ACHIEVEMENTS["comeback_king"]["unlocked"]:
-        particles = unlock_achievement("comeback_king", achievements_unlocked, text_effects)
+    if player_money <= 10 and result == "YOU WIN!" and not ACHIEVEMENTS[
+            "comeback_king"]["unlocked"]:
+        particles = unlock_achievement("comeback_king", achievements_unlocked,
+                                       text_effects)
         if particles:
             particle_systems.append(particles)
+
 
 # All-in achievement
     if current_bet == player_money and not ACHIEVEMENTS["all_in"]["unlocked"]:
-        particles = unlock_achievement("all_in", achievements_unlocked, text_effects)
+        particles = unlock_achievement("all_in", achievements_unlocked,
+                                       text_effects)
         if particles:
             particle_systems.append(particles)
 
@@ -849,11 +983,13 @@ def check_achievements(game_state, result, player_hand, dealer_hand, player_mone
             break
 
     if all_unlocked and not ACHIEVEMENTS["blackjack_legend"]["unlocked"]:
-        particles = unlock_achievement("blackjack_legend", achievements_unlocked, text_effects)
+        particles = unlock_achievement("blackjack_legend",
+                                       achievements_unlocked, text_effects)
         if particles:
             particle_systems.append(particles)
 
     return particle_systems
+
 
 def show_achievements_screen():
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -883,7 +1019,7 @@ def show_achievements_screen():
         # Draw title
         title_font = pygame.font.Font(None, 72)
         title_text = title_font.render("BlackJack Achievements", True, GOLD)
-        screen.blit(title_text, (WIDTH//2 - title_text.get_width()//2, 50))
+        screen.blit(title_text, (WIDTH // 2 - title_text.get_width() // 2, 50))
 
         # Draw achievements grid
         keys = list(ACHIEVEMENTS.keys())
@@ -902,19 +1038,29 @@ def show_achievements_screen():
 
             if ACHIEVEMENTS[key]["unlocked"]:
                 # Gold background for unlocked achievements
-                pygame.draw.rect(screen, (50, 40, 0), box_rect, border_radius=8)
+                pygame.draw.rect(screen, (50, 40, 0),
+                                 box_rect,
+                                 border_radius=8)
                 pygame.draw.rect(screen, GOLD, box_rect, 2, border_radius=8)
                 color = WHITE
             else:
                 # Dark background for locked achievements
-                pygame.draw.rect(screen, (40, 40, 40), box_rect, border_radius=8)
-                pygame.draw.rect(screen, (100, 100, 100), box_rect, 2, border_radius=8)
+                pygame.draw.rect(screen, (40, 40, 40),
+                                 box_rect,
+                                 border_radius=8)
+                pygame.draw.rect(screen, (100, 100, 100),
+                                 box_rect,
+                                 2,
+                                 border_radius=8)
                 color = (150, 150, 150)
 
             # Draw achievement name
             name_font = pygame.font.Font(None, 28)
-            name_text = name_font.render(ACHIEVEMENTS[key]["name"], True, color)
-            screen.blit(name_text, (x + (cell_width - 40 - name_text.get_width())//2, y + 15))
+            name_text = name_font.render(ACHIEVEMENTS[key]["name"], True,
+                                         color)
+            screen.blit(
+                name_text,
+                (x + (cell_width - 40 - name_text.get_width()) // 2, y + 15))
 
             # Draw achievement description (wrapped text)
             desc_font = pygame.font.Font(None, 24)
@@ -938,11 +1084,15 @@ def show_achievements_screen():
 
             for j, line in enumerate(lines):
                 line_surf = desc_font.render(line, True, color)
-                screen.blit(line_surf, (x + (cell_width - 40 - line_surf.get_width())//2, y + 50 + j * 25))
+                screen.blit(line_surf,
+                            (x +
+                             (cell_width - 40 - line_surf.get_width()) // 2,
+                             y + 50 + j * 25))
 
         # Draw back button
-        back_button = pygame.Rect(WIDTH//2 - 100, HEIGHT - 100, 200, 50)
-        draw_glowing_button(screen, back_button, "Back to Game", WHITE, BLUE, (100, 100, 255))
+        back_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT - 100, 200, 50)
+        draw_glowing_button(screen, back_button, "Back to Game", WHITE, BLUE,
+                            (100, 100, 255))
 
         # Handle back button
         if pygame.mouse.get_pressed()[0]:
@@ -952,6 +1102,7 @@ def show_achievements_screen():
 
         pygame.display.flip()
         clock.tick(60)
+
 
 # Define the main_menu() function before it is called
 def main_menu():
@@ -986,9 +1137,12 @@ def main_menu():
                 mouse_pos = pygame.mouse.get_pos()
 
                 # Check if clicked on menu options
-                play_button = pygame.Rect(WIDTH//2 - 100, HEIGHT//2 - 50, 200, 50)
-                achievements_button = pygame.Rect(WIDTH//2 - 100, HEIGHT//2 + 20, 200, 50)
-                quit_button = pygame.Rect(WIDTH//2 - 100, HEIGHT//2 + 90, 200, 50)
+                play_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 - 50,
+                                          200, 50)
+                achievements_button = pygame.Rect(WIDTH // 2 - 100,
+                                                  HEIGHT // 2 + 20, 200, 50)
+                quit_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 90,
+                                          200, 50)
 
                 if play_button.collidepoint(mouse_pos):
                     return "PLAY"
@@ -1003,45 +1157,60 @@ def main_menu():
         # Draw animated background
         current_time = pygame.time.get_ticks() / 1000.0
         for i in range(50):
-            x = (WIDTH//2) + math.cos(current_time * 0.5 + i * 0.2) * (WIDTH//3)
-            y = (HEIGHT//2) + math.sin(current_time * 0.5 + i * 0.2) * (HEIGHT//3)
+            x = (WIDTH //
+                 2) + math.cos(current_time * 0.5 + i * 0.2) * (WIDTH // 3)
+            y = (HEIGHT //
+                 2) + math.sin(current_time * 0.5 + i * 0.2) * (HEIGHT // 3)
             size = 2 + math.sin(current_time + i) * 2
-            color = (
-                int(127 + 127 * math.sin(current_time * 0.7 + i * 0.1)),
-                int(127 + 127 * math.sin(current_time * 0.5 + i * 0.1)),
-                int(127 + 127 * math.sin(current_time * 0.3 + i * 0.1))
-            )
+            color = (int(127 + 127 * math.sin(current_time * 0.7 + i * 0.1)),
+                     int(127 + 127 * math.sin(current_time * 0.5 + i * 0.1)),
+                     int(127 + 127 * math.sin(current_time * 0.3 + i * 0.1)))
             pygame.draw.circle(screen, color, (int(x), int(y)), int(size))
 
         # Draw title
         title_font = pygame.font.Font(None, 92)
         title_text = title_font.render("BLACKJACK DELUXE", True, GOLD)
-        screen.blit(title_text, (WIDTH//2 - title_text.get_width()//2, HEIGHT//4))
+        screen.blit(title_text,
+                    (WIDTH // 2 - title_text.get_width() // 2, HEIGHT // 4))
 
         # Draw menu options
         options = ["Play Game", "Achievements", "Quit"]
         for i, option in enumerate(options):
             color = GOLD if i == menu_option else WHITE
-            button_rect = pygame.Rect(WIDTH//2 - 100, HEIGHT//2 - 50 + i * 70, 200, 50)
+            button_rect = pygame.Rect(WIDTH // 2 - 100,
+                                      HEIGHT // 2 - 50 + i * 70, 200, 50)
 
             if i == menu_option:
-                draw_glowing_button(screen, button_rect, option, BLACK, color, (*color, 128), pulse=True)
+                draw_glowing_button(screen,
+                                    button_rect,
+                                    option,
+                                    BLACK,
+                                    color, (*color, 128),
+                                    pulse=True)
             else:
-                draw_glowing_button(screen, button_rect, option, BLACK, color, (*color, 64), pulse=False)
+                draw_glowing_button(screen,
+                                    button_rect,
+                                    option,
+                                    BLACK,
+                                    color, (*color, 64),
+                                    pulse=False)
 
         # Update display
         pygame.display.flip()
         clock.tick(60)
 
+
 # Main game function
 def main():
+    logging.info("Starting new game session")
+
+
     dealer_welcome = pygame.mixer.Sound("assets/sounds/dealer_welcome.wav")
     dealer_welcome.play()
     # Set up display
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Blackjack Deluxe")
     clock = pygame.time.Clock()
-    
 
     # Initialize game state
     deck = shuffle_deck()
@@ -1078,14 +1247,14 @@ def main():
     }
 
     # Button rectangles
-    hit_button = pygame.Rect(WIDTH//2 - 150, HEIGHT - 100, 100, 50)
-    stand_button = pygame.Rect(WIDTH//2, HEIGHT - 100, 100, 50)
-    double_button = pygame.Rect(WIDTH//2 + 150, HEIGHT - 100, 100, 50)
-    deal_button = pygame.Rect(WIDTH//2 + 100, HEIGHT - 100, 100, 50)
-    split_button = pygame.Rect(WIDTH//2 + 250, HEIGHT - 100, 100, 50)
-    deal_button = pygame.Rect(WIDTH//2 + 100, HEIGHT - 100, 100, 50)
-    insurance_button = pygame.Rect(WIDTH//2 - 200, HEIGHT - 100, 150, 50)
-    no_insurance_button = pygame.Rect(WIDTH//2 + 50, HEIGHT - 100, 150, 50)
+    hit_button = pygame.Rect(WIDTH // 2 - 150, HEIGHT - 100, 100, 50)
+    stand_button = pygame.Rect(WIDTH // 2, HEIGHT - 100, 100, 50)
+    double_button = pygame.Rect(WIDTH // 2 + 150, HEIGHT - 100, 100, 50)
+    deal_button = pygame.Rect(WIDTH // 2 + 100, HEIGHT - 100, 100, 50)
+    split_button = pygame.Rect(WIDTH // 2 + 250, HEIGHT - 100, 100, 50)
+    deal_button = pygame.Rect(WIDTH // 2 + 100, HEIGHT - 100, 100, 50)
+    insurance_button = pygame.Rect(WIDTH // 2 - 200, HEIGHT - 100, 150, 50)
+    no_insurance_button = pygame.Rect(WIDTH // 2 + 50, HEIGHT - 100, 150, 50)
 
     # Results
     result = ""
@@ -1115,18 +1284,19 @@ def main():
                                 if current_bet + value <= MAX_BET and current_bet + value <= player_money:
                                     current_bet += value
                                     # Create chip animation
-                                    chip_animations.append(ChipAnimation(
-                                        value,
-                                        (x, HEIGHT - 150),
-                                        (WIDTH // 2, HEIGHT - 200)
-                                    ))
+                                    chip_animations.append(
+                                        ChipAnimation(
+                                            value, (x, HEIGHT - 150),
+                                            (WIDTH // 2, HEIGHT - 200)))
                                     chip_place.play()
 
                     # Check if player clicked on deal button
-                    if deal_button.collidepoint(mouse_pos) and current_bet >= MIN_BET:
+                    if deal_button.collidepoint(
+                            mouse_pos) and current_bet >= MIN_BET:
                         game_state = "DEALING"
 
-                        dealer_hit_or_stand = pygame.mixer.Sound("assets/sounds/hit_stand_double.wav")
+                        dealer_hit_or_stand = pygame.mixer.Sound(
+                            "assets/sounds/hit_stand_double.wav")
                         dealer_hit_or_stand.play()
 
                         # Reset player hands for new game
@@ -1140,41 +1310,37 @@ def main():
                         # Player first card
                         player_card = deal_card(deck)
                         player_hands[0].append(player_card)
-                        card_animations.append(create_deal_animation(
-                            player_card,
-                            deck_pos,
-                            (WIDTH//2 - CARD_WIDTH - 10, HEIGHT//2 + 50)
-                        ))
+                        card_animations.append(
+                            create_deal_animation(player_card, deck_pos,
+                                                  (WIDTH // 2 - CARD_WIDTH -
+                                                   10, HEIGHT // 2 + 50)))
                         card_flip.play()
 
                         # Dealer first card
                         dealer_card = deal_card(deck)
                         dealer_hand.append(dealer_card)
-                        card_animations.append(create_deal_animation(
-                            dealer_card,
-                            deck_pos,
-                            (WIDTH//2 - CARD_WIDTH - 10, HEIGHT//2 - 150)
-                        ))
+                        card_animations.append(
+                            create_deal_animation(dealer_card, deck_pos,
+                                                  (WIDTH // 2 - CARD_WIDTH -
+                                                   10, HEIGHT // 2 - 150)))
                         card_flip.play()
 
                         # Player second card
                         player_card = deal_card(deck)
                         player_hands[0].append(player_card)
-                        card_animations.append(create_deal_animation(
-                            player_card,
-                            deck_pos,
-                            (WIDTH//2 + 10, HEIGHT//2 + 50)
-                        ))
+                        card_animations.append(
+                            create_deal_animation(
+                                player_card, deck_pos,
+                                (WIDTH // 2 + 10, HEIGHT // 2 + 50)))
                         card_flip.play()
 
                         # Dealer second card (face down)
                         dealer_card = deal_card(deck)
                         dealer_hand.append(dealer_card)
-                        card_animations.append(create_deal_animation(
-                            dealer_card,
-                            deck_pos,
-                            (WIDTH//2 + 10, HEIGHT//2 - 150)
-                        ))
+                        card_animations.append(
+                            create_deal_animation(
+                                dealer_card, deck_pos,
+                                (WIDTH // 2 + 10, HEIGHT // 2 - 150)))
                         card_flip.play()
 
                 # Handle insurance option
@@ -1186,15 +1352,27 @@ def main():
                         player_money -= insurance_bet
 
                         # Create chip animation for insurance bet
-                        chip_animations.append(ChipAnimation(
-                            insurance_bet,
-                            (WIDTH // 2 - 150, HEIGHT - 150),
-                            (WIDTH // 2 - 150, HEIGHT - 300)
-                        ))
+                        chip_animations.append(
+                            ChipAnimation(insurance_bet,
+                                          (WIDTH // 2 - 150, HEIGHT - 150),
+                                          (WIDTH // 2 - 150, HEIGHT - 300)))
                         chip_place.play()
 
-                        # Move to player turn
-                        game_state = "PLAYER_TURN"
+                        # Check if dealer has a natural Blackjack
+                        if calculate_hand(dealer_hand) == 21:
+                            # Insurance pays 2:1
+                            player_money += insurance_bet * 3
+                            stats["insurance_wins"] += 1
+                            text_effects.append(
+                                TextEffect("Insurance Win!",
+                                           (WIDTH // 2, HEIGHT // 2 - 100), GREEN))
+                            game_state = "GAME_OVER"
+                            result = "DEALER BLACKJACK!"
+                            show_dealer_cards = True
+                            player_money -= current_bet
+                        else:
+                            # Move to player turn
+                            game_state = "PLAYER_TURN"
 
                     # Check if player declines insurance
                     elif no_insurance_button.collidepoint(mouse_pos):
@@ -1214,16 +1392,17 @@ def main():
                         # Calculate position based on number of cards and current hand index
                         offset = len(player_hand) - 3
                         y_offset = current_hand_index * 100  # Offset for split hands
-                        card_animations.append(create_deal_animation(
-                            player_card,
-                            (WIDTH - CARD_WIDTH - 50, 50),
-                            (WIDTH//2 + CARD_WIDTH + offset * 30, HEIGHT//2 + 50 + y_offset)
-                        ))
+                        card_animations.append(
+                            create_deal_animation(
+                                player_card, (WIDTH - CARD_WIDTH - 50, 50),
+                                (WIDTH // 2 + CARD_WIDTH + offset * 30,
+                                 HEIGHT // 2 + 50 + y_offset)))
 
                         # Check if player busts
                         if calculate_hand(player_hand) > 21:
                             if current_hand_index < len(player_hands) - 1:
-                                player_bust = pygame.mixer.Sound("assets/sounds/player_bust.wav")
+                                player_bust = pygame.mixer.Sound(
+                                    "assets/sounds/player_bust.wav")
                                 player_bust.play()
                                 # If there are more split hands, move to the next one
                                 split_results.append("BUST!")
@@ -1238,28 +1417,32 @@ def main():
                                 else:
                                     game_state = "GAME_OVER"
                                     result = "BUST!"
-                                    player_bust = pygame.mixer.Sound("assets/sounds/player_bust.wav")
+                                    player_bust = pygame.mixer.Sound(
+                                        "assets/sounds/player_bust.wav")
                                     player_bust.play()
                                     show_dealer_cards = True
-                                    player_money = int(player_money-current_bet)
-                                    text_effects.append(TextEffect(
-                                        result,
-                                        (WIDTH//2, HEIGHT//2),
-                                        RED
-                                    ))
+                                    player_money = int(player_money -
+                                                       current_bet)
+                                    text_effects.append(
+                                        TextEffect(result,
+                                                   (WIDTH // 2, HEIGHT // 2),
+                                                   RED))
                                     lose.play()
-                                    particle_systems.extend(check_achievements(
-                                        game_state, result, player_hand, dealer_hand,
-                                        player_money, current_bet, achievements_unlocked,
-                                        text_effects, particle_systems, stats
-                                    ) or [])
+                                    particle_systems.extend(
+                                        check_achievements(
+                                            game_state, result, player_hand,
+                                            dealer_hand, player_money,
+                                            current_bet, achievements_unlocked,
+                                            text_effects, particle_systems,
+                                            stats) or [])
 
                     # Stand button
                     elif stand_button.collidepoint(mouse_pos):
                         if current_hand_index < len(player_hands) - 1:
                             # If there are more split hands, move to the next one
                             split_results.append("STAND")
-                            standing = pygame.mixer.Sound("assets/sounds/standing.wav")
+                            standing = pygame.mixer.Sound(
+                                "assets/sounds/standing.wav")
                             standing.play()
                             current_hand_index += 1
                         else:
@@ -1271,18 +1454,19 @@ def main():
                             show_dealer_cards = True
 
                     # Double button (only available on first action)
-                    elif double_button.collidepoint(mouse_pos) and len(player_hand) == 2:
+                    elif double_button.collidepoint(mouse_pos) and len(
+                            player_hand) == 2:
                         if player_money >= current_bet:
                             player_money -= current_bet
 
                             # Add animation for doubling chips
-                            chip_animations.append(ChipAnimation(
-                                current_bet,
-                                (WIDTH // 2 - 100, HEIGHT - 150),
-                                (WIDTH // 2, HEIGHT - 200)
-                            ))
+                            chip_animations.append(
+                                ChipAnimation(current_bet,
+                                              (WIDTH // 2 - 100, HEIGHT - 150),
+                                              (WIDTH // 2, HEIGHT - 200)))
 
-                            double = pygame.mixer.Sound("assets/sounds/double_down.wav")
+                            double = pygame.mixer.Sound(
+                                "assets/sounds/double_down.wav")
                             double.play()
 
                             chip_place.play()
@@ -1293,11 +1477,11 @@ def main():
 
                             # Calculate y offset for split hands
                             y_offset = current_hand_index * 100
-                            card_animations.append(create_deal_animation(
-                                player_card,
-                                (WIDTH - CARD_WIDTH - 50, 50),
-                                (WIDTH//2 + CARD_WIDTH, HEIGHT//2 + 50 + y_offset)
-                            ))
+                            card_animations.append(
+                                create_deal_animation(
+                                    player_card, (WIDTH - CARD_WIDTH - 50, 50),
+                                    (WIDTH // 2 + CARD_WIDTH,
+                                     HEIGHT // 2 + 50 + y_offset)))
 
                             # Record double down for achievements
                             stats["double_downs"] += 1
@@ -1315,7 +1499,8 @@ def main():
                                 show_dealer_cards = True
 
                     # Split button (only if first two cards are the same value)
-                    elif split_button.collidepoint(mouse_pos) and len(player_hand) == 2:
+                    elif split_button.collidepoint(mouse_pos) and len(
+                            player_hand) == 2:
                         # Check if cards are the same value and player has enough money
                         card1_value = get_card_value(player_hand[0])
                         card2_value = get_card_value(player_hand[1])
@@ -1328,41 +1513,41 @@ def main():
                             new_hand = [player_hand.pop()]
                             player_hands.append(new_hand)
 
-                            split = pygame.mixer.Sound("assets/sounds/split_hand.wav")
+                            split = pygame.mixer.Sound(
+                                "assets/sounds/split_hand.wav")
                             split.play()
 
                             # Add animation for splitting chips
-                            chip_animations.append(ChipAnimation(
-                                current_bet,
-                                (WIDTH // 2 - 100, HEIGHT - 150),
-                                (WIDTH // 2 + 100, HEIGHT - 200)
-                            ))
+                            chip_animations.append(
+                                ChipAnimation(
+                                    current_bet,
+                                    (WIDTH // 2 - 100, HEIGHT - 150),
+                                    (WIDTH // 2 + 100, HEIGHT - 200)))
                             chip_place.play()
 
                             # Deal a new card to the first hand
                             player_card = deal_card(deck)
                             player_hand.append(player_card)
-                            card_animations.append(create_deal_animation(
-                                player_card,
-                                (WIDTH - CARD_WIDTH - 50, 50),
-                                (WIDTH//2 + 10, HEIGHT//2 + 50)
-                            ))
+                            card_animations.append(
+                                create_deal_animation(
+                                    player_card, (WIDTH - CARD_WIDTH - 50, 50),
+                                    (WIDTH // 2 + 10, HEIGHT // 2 + 50)))
 
                             # Deal a new card to the second hand
                             second_card = deal_card(deck)
                             player_hands[1].append(second_card)
-                            card_animations.append(create_deal_animation(
-                                second_card,
-                                (WIDTH - CARD_WIDTH - 50, 50),
-                                (WIDTH//2 + 10, HEIGHT//2 + 150)
-                            ))
+                            card_animations.append(
+                                create_deal_animation(
+                                    second_card, (WIDTH - CARD_WIDTH - 50, 50),
+                                    (WIDTH // 2 + 10, HEIGHT // 2 + 150)))
 
                             # Record split for achievements
                             stats["splits"] += 1
 
                 # Handle game over state - start new game
                 elif game_state == "GAME_OVER":
-                    if hit_button.collidepoint(mouse_pos) or stand_button.collidepoint(mouse_pos):
+                    if hit_button.collidepoint(
+                            mouse_pos) or stand_button.collidepoint(mouse_pos):
                         # Reset for new hand
                         player_hands = [[]]
                         dealer_hand = []
@@ -1382,7 +1567,8 @@ def main():
                 # If all deal animations complete, check for dealer ace and offer insurance
                 if game_state == "DEALING" and not card_animations:
                     # Check if dealer's face-up card is an Ace
-                    if dealer_hand[0][0] == 'A':
+                    dealer_first_card = dealer_hand[0]
+                    if dealer_first_card[0] == 'ace':
                         game_state = "INSURANCE"
                     else:
                         game_state = "PLAYER_TURN"
@@ -1395,41 +1581,38 @@ def main():
                             game_state = "GAME_OVER"
                             result = "PUSH"
                             show_dealer_cards = True
-                            text_effects.append(TextEffect(
-                                result,
-                                (WIDTH//2, HEIGHT//2),
-                                BLUE
-                            ))
+                            text_effects.append(
+                                TextEffect(result, (WIDTH // 2, HEIGHT // 2),
+                                           BLUE))
 
                             # Process insurance if taken
                             if insurance_bet > 0:
                                 # Insurance pays 2:1
                                 player_money += insurance_bet * 3
                                 stats["insurance_wins"] += 1
-                                text_effects.append(TextEffect(
-                                    "Insurance Win!",
-                                    (WIDTH//2, HEIGHT//2 + 50),
-                                    GREEN
-                                ))
+                                text_effects.append(
+                                    TextEffect("Insurance Win!",
+                                               (WIDTH // 2, HEIGHT // 2 + 50),
+                                               GREEN))
                         else:
                             game_state = "GAME_OVER"
                             result = "BLACKJACK!"
-                            nat_blackjack = pygame.mixer.Sound("assets/sounds/nat_blackjack.wav")
+                            nat_blackjack = pygame.mixer.Sound(
+                                "assets/sounds/nat_blackjack.wav")
                             nat_blackjack.play()
                             show_dealer_cards = True
                             # Blackjack pays 3:2
                             player_money += int(current_bet * 2.5)
-                            text_effects.append(TextEffect(
-                                result,
-                                (WIDTH//2, HEIGHT//2),
-                                GOLD
-                            ))
+                            text_effects.append(
+                                TextEffect(result, (WIDTH // 2, HEIGHT // 2),
+                                           GOLD))
 
-                        particle_systems.extend(check_achievements(
-                            game_state, result, player_hand, dealer_hand,
-                            player_money, current_bet, achievements_unlocked,
-                            text_effects, particle_systems, stats
-                        ) or [])
+                        particle_systems.extend(
+                            check_achievements(
+                                game_state, result, player_hand, dealer_hand,
+                                player_money, current_bet,
+                                achievements_unlocked, text_effects,
+                                particle_systems, stats) or [])
 
         for animation in chip_animations[:]:
             animation.update()
@@ -1458,11 +1641,11 @@ def main():
 
                 # Calculate position based on number of cards
                 offset = len(dealer_hand) - 3
-                card_animations.append(create_deal_animation(
-                    dealer_card,
-                    (WIDTH - CARD_WIDTH - 50, 50),
-                    (WIDTH//2 + CARD_WIDTH + offset * 30, HEIGHT//2 - 150)
-                ))
+                card_animations.append(
+                    create_deal_animation(dealer_card,
+                                          (WIDTH - CARD_WIDTH - 50, 50),
+                                          (WIDTH // 2 + CARD_WIDTH +
+                                           offset * 30, HEIGHT // 2 - 150)))
             else:
                 # Process insurance if dealer has blackjack
                 if calculate_hand(dealer_hand) == 21 and len(dealer_hand) == 2:
@@ -1470,11 +1653,9 @@ def main():
                         # Insurance pays 2:1
                         player_money += insurance_bet * 3
                         stats["insurance_wins"] += 1
-                        text_effects.append(TextEffect(
-                            "Insurance Win!",
-                            (WIDTH//2, HEIGHT//2 - 100),
-                            GREEN
-                        ))
+                        text_effects.append(
+                            TextEffect("Insurance Win!",
+                                       (WIDTH // 2, HEIGHT // 2 - 100), GREEN))
 
                 # Determine winner for each hand
                 game_state = "GAME_OVER"
@@ -1484,7 +1665,8 @@ def main():
                     total_winnings = 0
 
                     for i, hand in enumerate(player_hands):
-                        hand_result = split_results[i] if i < len(split_results) else "UNKNOWN"
+                        hand_result = split_results[i] if i < len(
+                            split_results) else "UNKNOWN"
 
                         # Skip already busted hands
                         if hand_result == "BUST!":
@@ -1497,26 +1679,30 @@ def main():
                         hand_bet = current_bet * 2 if hand_result == "DOUBLE" else current_bet
 
                         if player_value > 21:
-                        # Player busts, player loses
-                            player_lose = pygame.mixer.Sound("assets/sounds/player_lose.wav")
+                            # Player busts, player loses
+                            player_lose = pygame.mixer.Sound(
+                                "assets/sounds/player_lose.wav")
                             player_lose.play()
                             player_money = int(player_money - hand_bet)
                             split_results[i] = "LOSE"
                         elif dealer_value > 21 and player_value <= 21:
                             # Dealer busts, player wins
-                            player_win = pygame.mixer.Sound("assets/sounds/player_win.wav")
+                            player_win = pygame.mixer.Sound(
+                                "assets/sounds/player_win.wav")
                             player_win.play()
                             total_winnings += hand_bet * 2  # Return bet + winnings
                             split_results[i] = "WIN"
                         elif dealer_value > player_value:
                             # Dealer wins
-                            player_lose = pygame.mixer.Sound("assets/sounds/player_lose.wav")
+                            player_lose = pygame.mixer.Sound(
+                                "assets/sounds/player_lose.wav")
                             player_lose.play()
                             player_money = int(player_money - hand_bet)
                             split_results[i] = "LOSE"
                         elif dealer_value < player_value and player_value <= 21:
                             # Player wins
-                            player_win = pygame.mixer.Sound("assets/sounds/player_win.wav")
+                            player_win = pygame.mixer.Sound(
+                                "assets/sounds/player_win.wav")
                             player_win.play()
                             total_winnings += hand_bet * 2  # Return bet + winnings
                             split_results[i] = "WIN"
@@ -1536,64 +1722,56 @@ def main():
                     else:
                         result = "HANDS SETTLED"
 
-                    text_effects.append(TextEffect(
-                        result,
-                        (WIDTH//2, HEIGHT//2 - 100),
-                        GREEN if dealer_value > 21 else WHITE
-                    ))
+                    text_effects.append(
+                        TextEffect(result, (WIDTH // 2, HEIGHT // 2 - 100),
+                                   GREEN if dealer_value > 21 else WHITE))
                 else:
                     # Single hand evaluation
                     player_value = calculate_hand(player_hands[0])
 
                     if dealer_value > 21:
                         result = "DEALER BUSTS!"
-                        dealer_busts = pygame.mixer.Sound("assets/sounds/dealer_bust.wav")
+                        dealer_busts = pygame.mixer.Sound(
+                            "assets/sounds/dealer_bust.wav")
                         dealer_busts.play()
                         player_money += current_bet * 2  # Return bet + winnings
-                        text_effects.append(TextEffect(
-                            result,
-                            (WIDTH//2, HEIGHT//2),
-                            GREEN
-                        ))
+                        text_effects.append(
+                            TextEffect(result, (WIDTH // 2, HEIGHT // 2),
+                                       GREEN))
                         win.play()
                     elif dealer_value > player_value:
                         result = "DEALER WINS!"
-                        dealer_wins = pygame.mixer.Sound("assets/sounds/dealer_win.wav")
+                        dealer_wins = pygame.mixer.Sound(
+                            "assets/sounds/dealer_win.wav")
                         dealer_wins.play()
-                        player_money = int(player_money-current_bet)
-                        text_effects.append(TextEffect(
-                            result,
-                            (WIDTH//2, HEIGHT//2),
-                            RED
-                        ))
+                        player_money = int(player_money - current_bet)
+                        text_effects.append(
+                            TextEffect(result, (WIDTH // 2, HEIGHT // 2), RED))
                         lose.play()
                     elif dealer_value < player_value:
                         result = "YOU WIN!"
-                        player_wins = pygame.mixer.Sound("assets/sounds/player_win.wav")
+                        player_wins = pygame.mixer.Sound(
+                            "assets/sounds/player_win.wav")
                         player_wins.play()
                         player_money += current_bet * 2  # Return bet + winnings
-                        text_effects.append(TextEffect(
-                            result,
-                            (WIDTH//2, HEIGHT//2),
-                            GREEN
-                        ))
+                        text_effects.append(
+                            TextEffect(result, (WIDTH // 2, HEIGHT // 2),
+                                       GREEN))
                         win.play()
                     else:
                         result = "PUSH"
                         player_money += current_bet  # Return bet
                         push = pygame.mixer.Sound("assets/sounds/push.wav")
                         push.play()
-                        text_effects.append(TextEffect(
-                            result,
-                            (WIDTH//2, HEIGHT//2),
-                            BLUE
-                        ))
+                        text_effects.append(
+                            TextEffect(result, (WIDTH // 2, HEIGHT // 2),
+                                       BLUE))
 
-                particle_systems.extend(check_achievements(
-                    game_state, result, player_hands[0], dealer_hand,
-                    player_money, current_bet, achievements_unlocked,
-                    text_effects, particle_systems, stats
-                ) or [])
+                particle_systems.extend(
+                    check_achievements(game_state, result, player_hands[0],
+                                       dealer_hand, player_money, current_bet,
+                                       achievements_unlocked, text_effects,
+                                       particle_systems, stats) or [])
 
         # Draw game
         screen.fill(BLACK)
@@ -1609,38 +1787,53 @@ def main():
             for i, card in enumerate(dealer_hand):
                 if i == 1 and not show_dealer_cards:
                     # Draw face down card
-                    screen.blit(CARD_BACK, (WIDTH//2 + 10, HEIGHT//2 - 150))
+                    screen.blit(CARD_BACK,
+                                (WIDTH // 2 + 10, HEIGHT // 2 - 150))
                 else:
                     # Draw face up card
-                    screen.blit(card_images[card], 
-                                (WIDTH//2 - CARD_WIDTH - 10 + i * (CARD_WIDTH + 20), HEIGHT//2 - 150))
+                    screen.blit(card_images[card],
+                                (WIDTH // 2 - CARD_WIDTH - 10 + i *
+                                 (CARD_WIDTH + 20), HEIGHT // 2 - 150))
 
             # Draw dealer's hand value
             if show_dealer_cards:
-                value_text = FONT.render(f"Dealer: {calculate_hand(dealer_hand)}", True, WHITE)
-                screen.blit(value_text, (WIDTH//2 - 60, HEIGHT//2 - 200))
+                value_text = FONT.render(
+                    f"Dealer: {calculate_hand(dealer_hand)}", True, WHITE)
+                screen.blit(value_text, (WIDTH // 2 - 60, HEIGHT // 2 - 200))
 
         for hand_index, hand in enumerate(player_hands):
             if hand:
                 y_offset = hand_index * 100  # Offset for split hands
 
                 for i, card in enumerate(hand):
-                    screen.blit(card_images[card], 
-                                (WIDTH//2 - CARD_WIDTH - 10 + i * (CARD_WIDTH + 20), HEIGHT//2 + 50 + y_offset))
+                    screen.blit(
+                        card_images[card],
+                        (WIDTH // 2 - CARD_WIDTH - 10 + i *
+                         (CARD_WIDTH + 20), HEIGHT // 2 + 50 + y_offset))
 
                 # Draw hand value - FIXED POSITION
                 # Move the text to the left side of the cards to avoid overlap
-                value_text = FONT.render(f"Hand {hand_index + 1}: {calculate_hand(hand)}", True, WHITE)
-                screen.blit(value_text, (WIDTH//2 - 250, HEIGHT//2 + 80 + y_offset))  # Changed from HEIGHT//2 + 160 + y_offset
+                value_text = FONT.render(
+                    f"Hand {hand_index + 1}: {calculate_hand(hand)}", True,
+                    WHITE)
+                screen.blit(
+                    value_text,
+                    (WIDTH // 2 - 250, HEIGHT // 2 + 80 +
+                     y_offset))  # Changed from HEIGHT//2 + 160 + y_offset
 
                 # For split hands in game over state, show result
-                if game_state == "GAME_OVER" and len(player_hands) > 1 and hand_index < len(split_results):
-                    result_text = FONT.render(split_results[hand_index], True, 
-                                             GREEN if split_results[hand_index] == "WIN" else 
-                                             RED if split_results[hand_index] == "LOSE" or split_results[hand_index] == "BUST!" else 
-                                             BLUE)
+                if game_state == "GAME_OVER" and len(
+                        player_hands) > 1 and hand_index < len(split_results):
+                    result_text = FONT.render(
+                        split_results[hand_index], True,
+                        GREEN if split_results[hand_index] == "WIN" else
+                        RED if split_results[hand_index] == "LOSE"
+                        or split_results[hand_index] == "BUST!" else BLUE)
                     # Also move the result text to be adjacent to the hand value
-                    screen.blit(result_text, (WIDTH//2 - 100, HEIGHT//2 + 80 + y_offset))  # Changed from WIDTH//2 + 100, HEIGHT//2 + 160 + y_offset
+                    screen.blit(
+                        result_text,
+                        (WIDTH // 2 - 100, HEIGHT // 2 + 80 + y_offset)
+                    )  # Changed from WIDTH//2 + 100, HEIGHT//2 + 160 + y_offset
 
         # Draw money and bet information
         money_text = FONT.render(f"Money: ${player_money}", True, GOLD)
@@ -1651,7 +1844,8 @@ def main():
 
         # Draw insurance bet if active
         if insurance_bet > 0:
-            insurance_text = FONT.render(f"Insurance: ${insurance_bet}", True, WHITE)
+            insurance_text = FONT.render(f"Insurance: ${insurance_bet}", True,
+                                         WHITE)
             screen.blit(insurance_text, (50, 150))
 
         # Draw buttons based on game state
@@ -1661,12 +1855,15 @@ def main():
 
             # Draw deal button if bet is valid
             if current_bet >= MIN_BET:
-                draw_glowing_button(screen, deal_button, "DEAL", WHITE, GREEN, (100, 255, 100))
+                draw_glowing_button(screen, deal_button, "DEAL", WHITE, GREEN,
+                                    (100, 255, 100))
 
             # Reset button to clear bet
             if current_bet > 0:
-                reset_button = pygame.Rect(WIDTH//2 - 200, HEIGHT - 100, 100, 50)
-                draw_glowing_button(screen, reset_button, "RESET", WHITE, RED, (255, 100, 100))
+                reset_button = pygame.Rect(WIDTH // 2 - 200, HEIGHT - 100, 100,
+                                           50)
+                draw_glowing_button(screen, reset_button, "RESET", WHITE, RED,
+                                    (255, 100, 100))
 
                 # Handle reset button click
                 if pygame.mouse.get_pressed()[0]:
@@ -1677,15 +1874,24 @@ def main():
         # Draw insurance option buttons
         elif game_state == "INSURANCE":
             # Draw message about insurance
-            insurance_msg = FONT.render("Dealer showing an Ace. Would you like to take insurance?", True, WHITE)
-            screen.blit(insurance_msg, (WIDTH//2 - insurance_msg.get_width()//2, HEIGHT//2))
+            insurance_msg = FONT.render(
+                "Dealer showing an Ace. Would you like to take insurance?",
+                True, WHITE)
+            screen.blit(
+                insurance_msg,
+                (WIDTH // 2 - insurance_msg.get_width() // 2, HEIGHT // 2))
 
-            insurance_cost = FONT.render(f"Insurance costs: ${current_bet // 2}", True, GOLD)
-            screen.blit(insurance_cost, (WIDTH//2 - insurance_cost.get_width()//2, HEIGHT//2 + 40))
+            insurance_cost = FONT.render(
+                f"Insurance costs: ${current_bet // 2}", True, GOLD)
+            screen.blit(insurance_cost,
+                        (WIDTH // 2 - insurance_cost.get_width() // 2,
+                         HEIGHT // 2 + 40))
 
             # Draw insurance buttons
-            draw_glowing_button(screen, insurance_button, "TAKE INSURANCE", WHITE, GREEN, (100, 255, 100))
-            draw_glowing_button(screen, no_insurance_button, "NO INSURANCE", WHITE, RED, (255, 100, 100))
+            draw_glowing_button(screen, insurance_button, "TAKE INSURANCE",
+                                WHITE, GREEN, (100, 255, 100))
+            draw_glowing_button(screen, no_insurance_button, "NO INSURANCE",
+                                WHITE, RED, (255, 100, 100))
 
         elif game_state == "PLAYER_TURN":
             # Get current hand
@@ -1693,16 +1899,22 @@ def main():
 
             # Draw indicator for current hand
             if len(player_hands) > 1:
-                indicator_text = FONT.render(f"Playing Hand {current_hand_index + 1}", True, GOLD)
-                screen.blit(indicator_text, (WIDTH//2 - indicator_text.get_width()//2, HEIGHT//2))
+                indicator_text = FONT.render(
+                    f"Playing Hand {current_hand_index + 1}", True, GOLD)
+                screen.blit(indicator_text,
+                            (WIDTH // 2 - indicator_text.get_width() // 2,
+                             HEIGHT // 2))
 
             # Draw hit and stand buttons
-            draw_glowing_button(screen, hit_button, "HIT", WHITE, BLUE, (100, 100, 255))
-            draw_glowing_button(screen, stand_button, "STAND", WHITE, RED, (255, 100, 100))
+            draw_glowing_button(screen, hit_button, "HIT", WHITE, BLUE,
+                                (100, 100, 255))
+            draw_glowing_button(screen, stand_button, "STAND", WHITE, RED,
+                                (255, 100, 100))
 
             # Draw double button only for first decision with enough money
             if len(player_hand) == 2 and player_money >= current_bet:
-                draw_glowing_button(screen, double_button, "DOUBLE", WHITE, GOLD, (255, 215, 0))
+                draw_glowing_button(screen, double_button, "DOUBLE", WHITE,
+                                    GOLD, (255, 215, 0))
 
             # Draw split button only if first two cards are the same value
             if len(player_hand) == 2 and player_money >= current_bet:
@@ -1710,15 +1922,19 @@ def main():
                 card2_value = get_card_value(player_hand[1])
 
                 if card1_value == card2_value:
-                    draw_glowing_button(screen, split_button, "SPLIT", WHITE, PURPLE, (200, 100, 255))
+                    draw_glowing_button(screen, split_button, "SPLIT", WHITE,
+                                        PURPLE, (200, 100, 255))
 
         elif game_state == "GAME_OVER":
             # Draw new hand button
-            draw_glowing_button(screen, hit_button, "NEW HAND", WHITE, GREEN, (100, 100, 225))
+            draw_glowing_button(screen, hit_button, "NEW HAND", WHITE, GREEN,
+                                (100, 100, 225))
 
             # Draw main menu button
-            main_menu_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT - 50, 200, 40)
-            draw_glowing_button(screen, main_menu_button, "MAIN MENU", WHITE, BLUE, (100, 100, 255))
+            main_menu_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT - 50, 200,
+                                           40)
+            draw_glowing_button(screen, main_menu_button, "MAIN MENU", WHITE,
+                                BLUE, (100, 100, 255))
 
             # Handle main menu button click
             if pygame.mouse.get_pressed()[0]:
@@ -1728,21 +1944,34 @@ def main():
 
             # Draw result text
             result_font = pygame.font.Font(None, 72)
-            result_text = result_font.render(result, True, GOLD if "WIN" in result or "BLACKJACK" in result else RED if "BUST" in result or "DEALER WINS" in result else BLUE)
-            screen.blit(result_text, (WIDTH//2 - result_text.get_width()//2, HEIGHT//2 - 50))
+            result_text = result_font.render(
+                result, True,
+                GOLD if "WIN" in result or "BLACKJACK" in result else
+                RED if "BUST" in result or "DEALER WINS" in result else BLUE)
+            screen.blit(
+                result_text,
+                (WIDTH // 2 - result_text.get_width() // 2, HEIGHT // 2 - 50))
 
             # Draw winnings/losses text for single hands
             if len(player_hands) == 1:
                 if "WIN" in result or "BLACKJACK" in result or "DEALER BUSTS" in result:
-                    winnings = int(current_bet * 1.5) if "BLACKJACK" in result else current_bet
+                    winnings = int(
+                        current_bet *
+                        1.5) if "BLACKJACK" in result else current_bet
                     winnings_text = FONT.render(f"+ ${winnings}", True, GREEN)
-                    screen.blit(winnings_text, (WIDTH//2 - winnings_text.get_width()//2, HEIGHT//2 + 20))
+                    screen.blit(winnings_text,
+                                (WIDTH // 2 - winnings_text.get_width() // 2,
+                                 HEIGHT // 2 + 20))
                 elif "PUSH" in result:
                     push_text = FONT.render("Bet Returned", True, BLUE)
-                    screen.blit(push_text, (WIDTH//2 - push_text.get_width()//2, HEIGHT//2 + 20))
+                    screen.blit(push_text,
+                                (WIDTH // 2 - push_text.get_width() // 2,
+                                 HEIGHT // 2 + 20))
                 else:
                     loss_text = FONT.render(f"- ${current_bet}", True, RED)
-                    screen.blit(loss_text, (WIDTH//2 - loss_text.get_width()//2, HEIGHT//2 + 20))
+                    screen.blit(loss_text,
+                                (WIDTH // 2 - loss_text.get_width() // 2,
+                                 HEIGHT // 2 + 20))
 
         # Draw current animations on top of everything
         for animation in card_animations:
@@ -1752,7 +1981,8 @@ def main():
 
     # Check if this is the dealer's face down card
             is_dealer_face_down = False
-            if card in dealer_hand and dealer_hand.index(card) == 1 and not show_dealer_cards:
+            if card in dealer_hand and dealer_hand.index(
+                    card) == 1 and not show_dealer_cards:
                 is_dealer_face_down = True
 
             if is_dealer_face_down:
@@ -1781,19 +2011,29 @@ def main():
         # Draw achievements notification if any were unlocked this hand
         if achievements_unlocked:
             # Create achievements area
-            achievements_area = pygame.Rect(WIDTH - 300, 150, 250, 100 + len(achievements_unlocked) * 40)
-            pygame.draw.rect(screen, (0, 0, 0, 180), achievements_area, border_radius=10)
-            pygame.draw.rect(screen, GOLD, achievements_area, 2, border_radius=10)
+            achievements_area = pygame.Rect(
+                WIDTH - 300, 150, 250, 100 + len(achievements_unlocked) * 40)
+            pygame.draw.rect(screen, (0, 0, 0, 180),
+                             achievements_area,
+                             border_radius=10)
+            pygame.draw.rect(screen,
+                             GOLD,
+                             achievements_area,
+                             2,
+                             border_radius=10)
 
             # Draw header
             header_font = pygame.font.Font(None, 28)
             header_text = header_font.render("Recent Achievements", True, GOLD)
-            screen.blit(header_text, (WIDTH - 300 + (250 - header_text.get_width())//2, 160))
+            screen.blit(header_text,
+                        (WIDTH - 300 +
+                         (250 - header_text.get_width()) // 2, 160))
 
             # Draw achievement names
             for i, key in enumerate(achievements_unlocked):
                 achievement_font = pygame.font.Font(None, 24)
-                ach_text = achievement_font.render(ACHIEVEMENTS[key]["name"], True, WHITE)
+                ach_text = achievement_font.render(ACHIEVEMENTS[key]["name"],
+                                                   True, WHITE)
                 screen.blit(ach_text, (WIDTH - 280, 200 + i * 40))
 
         # In the main game loop, add these checks:
@@ -1818,6 +2058,7 @@ def main():
 
 # Quit pygame
     pygame.quit()
+
 
 # Run the game
 if __name__ == "__main__":
