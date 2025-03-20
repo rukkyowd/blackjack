@@ -89,7 +89,7 @@ The game uses the following assets:
 
 ## Credits
 - Developed using the `pygame` library.
-- Card and chip images sourced from [OpenGameArt](https://opengameart.org/) (or other sources, if applicable).
+- Card and chip images sourced from [OpenGameArt](https://opengameart.org/).
 
 ## License
 This project is open-source and available under the MIT License. Feel free to modify and distribute it as needed.
