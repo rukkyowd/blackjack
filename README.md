@@ -23,7 +23,7 @@ Blackjack Deluxe is a Python-based implementation of the classic casino card gam
 3. Navigate to the directory containing the file.
 4. Run the game using the command:
    ```bash
-   python blackjack.py
+   py blackjack.py
    ```
 5. Use the main menu to start a new game, view achievements, or quit.
 
