@@ -20,12 +20,17 @@ GREEN = (34, 139, 34)
 GOLD = (255, 215, 0)
 RED = (220, 20, 60)
 BLUE = (30, 144, 255)
+GRAY = (128, 128, 128)
 FONT = pygame.font.Font(None, 36)
-CHIP_VALUES = [10, 50, 100, 500]
+CHIP_VALUES = [10, 50, 100, 250, 500]
 MIN_BET, MAX_BET = 10, 500
 INSURANCE_BUTTON = pygame.Rect(WIDTH // 2 - 75, HEIGHT - 200, 150, 50)
 SPLIT_BUTTON = pygame.Rect(WIDTH // 2 + 200, HEIGHT - 100, 100, 50)
-
+STRATEGY_WIDTH = 300
+STRATEGY_HEIGHT = 400
+STRATEGY_MARGIN = 20
+CELL_SIZE = 30
+ai_difficulty = "Beginner"
 
 # Load images
 def load_image(path, size=None):
@@ -292,6 +297,316 @@ PROGRESS_REQUIREMENTS = {
     "chip_collector": 10000
 }
 
+def calculate_hand(hand):
+    value = sum(card_values[card[0]] for card in hand)
+    aces = sum(1 for card in hand if card[0] == 'ace')
+    while value > 21 and aces:
+        value -= 10
+        aces -= 1
+    return value
+
+class BlackjackAI:
+    def __init__(self, difficulty="Beginner"):
+        self.difficulty = difficulty
+        self.card_count = 0
+        self.player_tendency = {
+            "hits_on_soft": 0,
+            "stands_on_hard": 0,
+            "doubles_down": 0,
+            "splits_pairs": 0,
+            "takes_insurance": 0
+        }
+        self.rounds_tracked = 0
+    
+    def set_difficulty(self, difficulty):
+        """Set the AI difficulty level and reset tracking stats"""
+        old_difficulty = self.difficulty
+        self.difficulty = difficulty
+
+        print(f"Changing AI difficulty from {old_difficulty} to {difficulty}")
+        
+        # Reset tracking stats when difficulty changes to give clean slate
+        self.card_count = 0
+        self.rounds_tracked = 0
+        self.player_tendency = {
+            "hits_on_soft": 0,
+            "stands_on_hard": 0,
+            "doubles_down": 0,
+            "splits_pairs": 0,
+            "takes_insurance": 0
+        }
+        return difficulty  # Return the new difficulty for confirmation
+    
+    def update_card_count(self, card):
+        """Update the running count for card counting (Expert level)"""
+        # Always track cards regardless of difficulty to allow difficulty switching mid-game
+        value = self.get_card_value(card)
+        if value >= 10 or value == 1:  # High cards (10, J, Q, K, A)
+            self.card_count -= 1
+            logging.debug(f"Card dealt: {card}. Card count decreased to {self.card_count}")
+        elif 2 <= value <= 6:  # Low cards
+            self.card_count += 1
+            logging.debug(f"Card dealt: {card}. Card count increased to {self.card_count}")
+    
+    def track_player_action(self, action, hand, bet):
+        """Track player tendencies for adaptive play (Intermediate/Expert)"""
+        # Always track actions regardless of difficulty to allow difficulty switching mid-game
+        self.rounds_tracked += 1
+        
+        hand_value = self.calculate_hand(hand)
+        has_ace = any(card[0] == 'ace' for card in hand)
+        
+        if action == "HIT" and has_ace and hand_value < 19:
+            self.player_tendency["hits_on_soft"] += 1
+            logging.debug(f"Player hit on soft {hand_value}. Hits on soft: {self.player_tendency['hits_on_soft']}")
+        elif action == "STAND" and hand_value < 17:
+            self.player_tendency["stands_on_hard"] += 1
+            logging.debug(f"Player stood on hard {hand_value}. Stands on hard: {self.player_tendency['stands_on_hard']}")
+        elif action == "DOUBLE":
+            self.player_tendency["doubles_down"] += 1
+            logging.debug(f"Player doubled down. Doubles down: {self.player_tendency['doubles_down']}")
+        elif action == "SPLIT":
+            self.player_tendency["splits_pairs"] += 1
+            logging.debug(f"Player split pairs. Splits pairs: {self.player_tendency['splits_pairs']}")
+        elif action == "INSURANCE":
+            self.player_tendency["takes_insurance"] += 1
+            logging.debug(f"Player took insurance. Takes insurance: {self.player_tendency['takes_insurance']}")
+    
+    def get_player_aggression(self):
+        """Calculate player's aggression level based on tracked actions"""
+        if self.rounds_tracked == 0:
+            return 0.5  # Default to neutral if no data
+        
+        # Calculate how often player takes aggressive actions
+        aggressive_actions = (
+            self.player_tendency["hits_on_soft"] + 
+            self.player_tendency["doubles_down"] * 2  # Weight doubling more heavily
+        )
+        return min(1.0, aggressive_actions / max(1, self.rounds_tracked))
+    
+    def should_hit(self, hand, dealer_up_card, remaining_cards_ratio=0.5):
+        """Determine if the dealer should hit or stand based on AI difficulty."""
+        hand_value = self.calculate_hand(hand)
+        has_ace = any(card[0] == 'ace' for card in hand)
+        up_card_value = self.get_card_value(dealer_up_card)
+    
+        # Check for bust first (all difficulties)
+        if hand_value > 21:
+            return False
+
+        # Beginner AI - follows standard dealer rules
+        if self.difficulty == "Beginner":
+            # Dealer hits on soft 17 (Ace + 6) or less
+            if hand_value < 17 or (hand_value == 17 and has_ace):
+                return True
+            return False
+    
+        # Intermediate AI - makes some adjustments based on up card
+        elif self.difficulty == "Intermediate":
+            # Take more risks when dealer up card is strong (9, 10, or Ace)
+            if hand_value == 17 and has_ace:
+                return True  # Always hit on soft 17
+            
+            if hand_value == 16:
+                # Hit on 16 when dealer shows 7 or higher
+                if up_card_value >= 7 or up_card_value == 1:
+                    return True
+                # More aggressive with lower hands when player tends to stand early
+                if self.rounds_tracked > 3:
+                    stands_ratio = self.player_tendency["stands_on_hard"] / max(1, self.rounds_tracked)
+                    if stands_ratio > 0.3:
+                        return True
+            
+            # Default to standard rules
+            return hand_value < 16
+            
+        # Expert AI - uses card counting and player analysis
+        elif self.difficulty == "Expert":
+            # Use card counting to adjust strategy
+            if self.card_count > 2:  # Lots of high cards remaining
+                # Be more aggressive when deck favors dealer
+                if hand_value == 17 or hand_value == 16:
+                    return True
+            elif self.card_count < -2:  # Lots of low cards remaining
+                # Be more conservative when deck favors player
+                if hand_value >= 16:
+                    return False
+            
+            # Adapt to player tendencies
+            if self.rounds_tracked > 3:
+                player_aggression = self.get_player_aggression()
+                
+                # If player is aggressive, be more conservative to let them bust
+                if player_aggression > 0.6 and 16 <= hand_value <= 18:
+                    return False
+                # If player is conservative, be more aggressive
+                elif player_aggression < 0.3 and 15 <= hand_value <= 16:
+                    return True
+            
+            # Consider dealer up card in expert strategy
+            if hand_value == 16:
+                if up_card_value >= 7 or up_card_value == 1:  # Dealer showing strong card
+                    return True
+            elif hand_value == 17 and has_ace:  # Soft 17
+                return True
+            
+            # Default to standard rules if no special cases apply
+            return hand_value < 17
+        
+        # Fallback to standard rules if difficulty is invalid
+        return hand_value < 17
+    
+    def get_card_value(self, card):
+        """Get the numerical value of a card."""
+        if isinstance(card, (int, float)):
+            return int(card)
+        
+        # Assuming card format is either a number or a string like 'ace', 'king', etc.
+        if isinstance(card, str):
+            card_name = card.lower()
+            if card_name == 'ace':
+                return 1
+            elif card_name in ['king', 'queen', 'jack']:
+                return 10
+            else:
+                # Try to convert numerical strings like '10'
+                try:
+                    return int(card_name)
+                except ValueError:
+                    pass
+        
+        # If we have a tuple like ('ace', 'spades'), extract the first element
+        if isinstance(card, tuple) and len(card) >= 1:
+            card_name = card[0].lower()
+            if card_name == 'ace':
+                return 1
+            elif card_name in ['king', 'queen', 'jack', '10']:
+                return 10
+            elif card_name in ['2', '3', '4', '5', '6', '7', '8', '9']:
+                return int(card_name)
+            elif card_name.isdigit():
+                return int(card_name)
+        
+        # Default for any unexpected format
+        print(f"Warning: Unknown card format {card}, defaulting to 10")
+        return 10
+    
+    def calculate_hand(self, hand):
+        """Calculate the best value of a blackjack hand."""
+        if not hand:
+            return 0
+            
+        value = 0
+        aces = 0
+        
+        for card in hand:
+            card_value = self.get_card_value(card)
+            if card_value == 1:  # Ace
+                aces += 1
+                value += 11
+            else:
+                value += card_value
+        
+        # Adjust for aces if needed
+        while value > 21 and aces > 0:
+            value -= 10  # Convert an ace from 11 to 1
+            aces -= 1
+            
+        return value
+
+# Add the AI difficulty menu function
+def ai_difficulty_menu(current_difficulty="Beginner"):
+    """Shows the AI difficulty selection menu and returns the chosen difficulty
+    
+    Args:
+        current_difficulty (str): The currently selected difficulty (default: "Beginner")
+        
+    Returns:
+        str: The chosen difficulty
+    """
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Blackjack AI Difficulty")
+    clock = pygame.time.Clock()
+    
+    # Prepare buttons
+    beginner_button = pygame.Rect(WIDTH // 2 - 150, HEIGHT // 2 - 80, 300, 50)
+    intermediate_button = pygame.Rect(WIDTH // 2 - 150, HEIGHT // 2, 300, 50) 
+    expert_button = pygame.Rect(WIDTH // 2 - 150, HEIGHT // 2 + 80, 300, 50)
+    back_button = pygame.Rect(WIDTH // 2 - 150, HEIGHT // 2 + 160, 300, 50)
+    
+    # Descriptions for each difficulty
+    beginner_desc = "Standard dealer rules, hits on 16, stands on 17"
+    intermediate_desc = "Adapts slightly based on game state and player decisions"
+    expert_desc = "Uses card counting and analyzes player tendencies for optimal play"
+    
+    selected_difficulty = current_difficulty  # Use the passed current difficulty
+    
+    running = True
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                return selected_difficulty
+            
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mouse_pos = pygame.mouse.get_pos()
+                
+                if beginner_button.collidepoint(mouse_pos):
+                    selected_difficulty = "Beginner"
+                elif intermediate_button.collidepoint(mouse_pos):
+                    selected_difficulty = "Intermediate"
+                elif expert_button.collidepoint(mouse_pos):
+                    selected_difficulty = "Expert"
+                elif back_button.collidepoint(mouse_pos):
+                    return selected_difficulty
+        
+        # Draw the menu
+        screen.fill(BLACK)
+        screen.blit(CASINO_TABLE, (0, 0))
+        
+        # Draw title
+        title_font = pygame.font.Font(None, 48)
+        title_text = title_font.render("Select Dealer AI Difficulty", True, GOLD)
+        screen.blit(title_text, (WIDTH // 2 - title_text.get_width() // 2, HEIGHT // 4))
+        
+        # Draw buttons with highlight for the currently selected one
+        if selected_difficulty == "Beginner":
+            draw_glowing_button(screen, beginner_button, "Beginner", WHITE, GREEN, (100, 255, 100), glow_size=15)
+        else:
+            draw_glowing_button(screen, beginner_button, "Beginner", WHITE, GREEN, (100, 255, 100))
+            
+        if selected_difficulty == "Intermediate":
+            draw_glowing_button(screen, intermediate_button, "Intermediate", WHITE, BLUE, (100, 100, 255), glow_size=15)
+        else:
+            draw_glowing_button(screen, intermediate_button, "Intermediate", WHITE, BLUE, (100, 100, 255))
+            
+        if selected_difficulty == "Expert":
+            draw_glowing_button(screen, expert_button, "Expert", WHITE, RED, (255, 100, 100), glow_size=15)
+        else:
+            draw_glowing_button(screen, expert_button, "Expert", WHITE, RED, (255, 100, 100))
+            
+        draw_glowing_button(screen, back_button, "Back", WHITE, GRAY, (150, 150, 150))
+        
+        # Draw current selection
+        selection_font = pygame.font.Font(None, 24)
+        selection_text = selection_font.render(f"Current: {selected_difficulty}", True, WHITE)
+        screen.blit(selection_text, (WIDTH // 2 - selection_text.get_width() // 2, HEIGHT // 2 + 240))
+        
+        # Draw descriptions
+        desc_font = pygame.font.Font(None, 20)
+        if selected_difficulty == "Beginner":
+            desc_text = desc_font.render(beginner_desc, True, WHITE)
+        elif selected_difficulty == "Intermediate":
+            desc_text = desc_font.render(intermediate_desc, True, WHITE)
+        else:
+            desc_text = desc_font.render(expert_desc, True, WHITE)
+        
+        screen.blit(desc_text, (WIDTH // 2 - desc_text.get_width() // 2, HEIGHT // 2 + 270))
+        
+        pygame.display.flip()
+        clock.tick(60)
+    
+    return selected_difficulty
 
 # Animation classes (unchanged)
 class CardAnimation:
@@ -459,6 +774,315 @@ class TextEffect:
         text_rect = text_surf.get_rect(center=self.position)
         screen.blit(text_surf, text_rect)
 
+STAND_COLOR = (0, 150, 0)      # Green for stand
+HIT_COLOR = (200, 0, 0)        # Red for hit
+DOUBLE_COLOR = (200, 150, 0)   # Orange/gold for double down
+SPLIT_COLOR = (100, 100, 200)  # Blue for split
+SURRENDER_COLOR = (150, 150, 150)  # Gray for surrender
+
+class StrategyAssistant:
+    def __init__(self):
+        self.font = pygame.font.Font(None, 20)
+        self.title_font = pygame.font.Font(None, 24)
+        self.active = False
+        self.surface = pygame.Surface((STRATEGY_WIDTH, STRATEGY_HEIGHT), pygame.SRCALPHA)
+        
+        # Basic strategy chart (hard totals)
+        # Format: player_total: [actions for dealer 2, 3, 4, 5, 6, 7, 8, 9, 10, A]
+        # H = Hit, S = Stand, D = Double if allowed (otherwise Hit), Su = Surrender if allowed (otherwise Hit)
+        self.hard_strategy = {
+            21: ['S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S'],
+            20: ['S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S'],
+            19: ['S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S'],
+            18: ['S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S'],
+            17: ['S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S'],
+            16: ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],
+            15: ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],
+            14: ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],
+            13: ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],
+            12: ['H', 'H', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],
+            11: ['D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'D'],
+            10: ['D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'H', 'H'],
+            9:  ['H', 'D', 'D', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],
+            8:  ['H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'],
+            7:  ['H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'],
+            6:  ['H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'],
+            5:  ['H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H']
+        }
+        
+        # Soft totals strategy (hands with an Ace counted as 11)
+        self.soft_strategy = {
+            20: ['S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S'],  # A,9
+            19: ['S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S'],  # A,8
+            18: ['S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S'],  # A,7
+            17: ['H', 'D', 'D', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],  # A,6
+            16: ['H', 'H', 'D', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],  # A,5
+            15: ['H', 'H', 'D', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],  # A,4
+            14: ['H', 'H', 'H', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],  # A,3
+            13: ['H', 'H', 'H', 'D', 'D', 'H', 'H', 'H', 'H', 'H']   # A,2
+        }
+        
+        # Pair splitting strategy
+        self.pair_strategy = {
+            'A,A': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y'],
+            '10,10': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N'],
+            '9,9': ['Y', 'Y', 'Y', 'Y', 'Y', 'N', 'Y', 'Y', 'N', 'N'],
+            '8,8': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y'],
+            '7,7': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N', 'N'],
+            '6,6': ['Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N', 'N', 'N'],
+            '5,5': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N'],  # Better to double with 10
+            '4,4': ['N', 'N', 'N', 'Y', 'Y', 'N', 'N', 'N', 'N', 'N'],
+            '3,3': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N', 'N'],
+            '2,2': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N', 'N']
+        }
+    
+    def toggle(self):
+        self.active = not self.active
+        
+    def get_action_color(self, action):
+        if action == 'S':
+            return STAND_COLOR
+        elif action == 'H':
+            return HIT_COLOR
+        elif action == 'D':
+            return DOUBLE_COLOR
+        elif action == 'Y':  # Split
+            return SPLIT_COLOR
+        elif action == 'Su':  # Surrender
+            return SURRENDER_COLOR
+        else:  # 'N' - Don't split
+            return HIT_COLOR
+    
+    def get_recommended_move(self, player_hand, dealer_card):
+        """
+        Returns the recommended move based on basic strategy.
+        
+        Args:
+            player_hand: List of cards in player's hand
+            dealer_card: Dealer's up card
+        
+        Returns:
+            String with recommended action: "HIT", "STAND", "DOUBLE", "SPLIT", "SURRENDER"
+        """
+        # Get dealer's card value for index
+        dealer_val = self.get_card_value(dealer_card)
+        dealer_index = dealer_val - 2  # 2 is at index 0, Ace is at index 9
+        if dealer_val == 1:  # Ace
+            dealer_index = 9
+            
+        # Check if hand is a pair
+        if len(player_hand) == 2:
+            card1_val = self.get_card_value(player_hand[0])
+            card2_val = self.get_card_value(player_hand[1])
+            
+            # Handle face cards (all count as 10 for pairs)
+            if card1_val >= 10:
+                card1_val = 10
+            if card2_val >= 10:
+                card2_val = 10
+                
+            if card1_val == card2_val:
+                pair_key = f"{card1_val},{card2_val}"
+                if pair_key in self.pair_strategy:
+                    action = self.pair_strategy[pair_key][dealer_index]
+                    if action == 'Y':
+                        return "SPLIT"
+        
+        # Get player's hand value
+        hand_value = self.calculate_hand(player_hand)
+        
+        # Check if hand is soft (contains an Ace counted as 11)
+        is_soft = self.contains_ace(player_hand) and hand_value <= 21
+        
+        # Get strategy based on hand type
+        if is_soft and hand_value in self.soft_strategy:
+            action = self.soft_strategy[hand_value][dealer_index]
+        elif hand_value in self.hard_strategy:
+            action = self.hard_strategy[hand_value][dealer_index]
+        else:
+            # Default to hit for low values
+            action = 'H'
+            
+        # Translate action code to full action name
+        if action == 'S':
+            return "STAND"
+        elif action == 'H':
+            return "HIT"
+        elif action == 'D':
+            # Only recommend double if first action (2 cards)
+            if len(player_hand) == 2:
+                return "DOUBLE"
+            else:
+                return "HIT"
+        elif action == 'Su':
+            # Surrender only on first action, otherwise hit
+            if len(player_hand) == 2:
+                return "SURRENDER"
+            else:
+                return "HIT"
+        
+        # Default to hit
+        return "HIT"
+    
+    def get_card_value(self, card):
+        """Helper function to get card value from card tuple."""
+        card_type = card[0]
+        if card_type == 'ace':
+            return 1
+        elif card_type in ['king', 'queen', 'jack']:
+            return 10
+        else:
+            return int(card_type)
+    
+    def calculate_hand(self, hand):
+        """Calculate the value of a hand, handling aces optimally."""
+        value = 0
+        aces = 0
+        
+        # First count non-aces
+        for card in hand:
+            card_type = card[0]
+            if card_type == 'ace':
+                aces += 1
+            elif card_type in ['king', 'queen', 'jack']:
+                value += 10
+            else:
+                value += int(card_type)
+        
+        # Add aces, using 11 when possible, 1 otherwise
+        for _ in range(aces):
+            if value + 11 <= 21:
+                value += 11
+            else:
+                value += 1
+                
+        return value
+    
+    def contains_ace(self, hand):
+        """Check if hand contains an ace."""
+        for card in hand:
+            if card[0] == 'ace':
+                return True
+        return False
+        
+    def draw(self, screen, player_hand, dealer_up_card):
+        """Draw the strategy assistant on the screen."""
+        if not self.active:
+            return
+            
+        # Clear the surface
+        self.surface.fill((0, 0, 0, 200))
+        
+        # Draw border
+        pygame.draw.rect(self.surface, (255, 215, 0), (0, 0, STRATEGY_WIDTH, STRATEGY_HEIGHT), 2)
+        
+        # Draw title
+        title = self.title_font.render("Basic Strategy Advisor", True, (255, 255, 255))
+        self.surface.blit(title, (STRATEGY_WIDTH//2 - title.get_width()//2, 10))
+        
+        # Get recommended move
+        if not dealer_up_card or not player_hand:
+            recommended = "Waiting for cards..."
+        else:
+            recommended = self.get_recommended_move(player_hand, dealer_up_card)
+        
+        # Draw player's hand value
+        if player_hand:
+            hand_value = self.calculate_hand(player_hand)
+            value_text = self.title_font.render(f"Your Hand: {hand_value}", True, (255, 255, 255))
+            self.surface.blit(value_text, (20, 50))
+            
+            # Indicate if hand is soft
+            is_soft = self.contains_ace(player_hand) and hand_value <= 21
+            if is_soft:
+                soft_text = self.font.render("(Soft hand)", True, (200, 200, 200))
+                self.surface.blit(soft_text, (20, 75))
+        
+        # Draw dealer's up card
+        if dealer_up_card:
+            dealer_val = self.get_card_value(dealer_up_card)
+            if dealer_val == 1:
+                dealer_val = "A"
+            dealer_text = self.title_font.render(f"Dealer Shows: {dealer_val}", True, (255, 255, 255))
+            self.surface.blit(dealer_text, (20, 100))
+        
+        # Draw recommendation
+        rec_bg_color = (0, 0, 0)
+        if recommended == "HIT":
+            rec_bg_color = HIT_COLOR
+        elif recommended == "STAND":
+            rec_bg_color = STAND_COLOR
+        elif recommended == "DOUBLE":
+            rec_bg_color = DOUBLE_COLOR
+        elif recommended == "SPLIT":
+            rec_bg_color = SPLIT_COLOR
+        elif recommended == "SURRENDER":
+            rec_bg_color = SURRENDER_COLOR
+            
+        # Draw recommendation box
+        pygame.draw.rect(self.surface, rec_bg_color, (20, 140, STRATEGY_WIDTH-40, 50))
+        pygame.draw.rect(self.surface, (255, 255, 255), (20, 140, STRATEGY_WIDTH-40, 50), 2)
+        
+        rec_text = self.title_font.render(f"Recommended: {recommended}", True, (255, 255, 255))
+        self.surface.blit(rec_text, (STRATEGY_WIDTH//2 - rec_text.get_width()//2, 155))
+        
+        # Add explanation
+        explanation = ""
+        if recommended == "HIT":
+            explanation = "Your odds are better if you take another card."
+        elif recommended == "STAND":
+            explanation = "Your current total is strong. Don't risk busting."
+        elif recommended == "DOUBLE":
+            explanation = "Good odds. Double your bet and take one more card."
+        elif recommended == "SPLIT":
+            explanation = "Split your pair into two separate hands."
+        elif recommended == "SURRENDER":
+            explanation = "Poor odds. Surrender to save half your bet."
+            
+        # Draw explanation text with wrapping
+        if explanation:
+            words = explanation.split()
+            line = ""
+            y_pos = 200
+            for word in words:
+                test_line = line + word + " "
+                text_width, _ = self.font.size(test_line)
+                if text_width > STRATEGY_WIDTH - 40:
+                    text = self.font.render(line, True, (200, 200, 200))
+                    self.surface.blit(text, (20, y_pos))
+                    y_pos += 25
+                    line = word + " "
+                else:
+                    line = test_line
+            if line:
+                text = self.font.render(line, True, (200, 200, 200))
+                self.surface.blit(text, (20, y_pos))
+        
+        # Draw legend
+        legend_y = 250
+        legend_items = [
+            ("HIT", HIT_COLOR),
+            ("STAND", STAND_COLOR),
+            ("DOUBLE", DOUBLE_COLOR),
+            ("SPLIT", SPLIT_COLOR)
+        ]
+        
+        for i, (label, color) in enumerate(legend_items):
+            # Draw color box
+            pygame.draw.rect(self.surface, color, (20 + (i * 70), legend_y, 20, 20))
+            pygame.draw.rect(self.surface, (255, 255, 255), (20 + (i * 70), legend_y, 20, 20), 1)
+            
+            # Draw label
+            text = self.font.render(label, True, (255, 255, 255))
+            self.surface.blit(text, (20 + (i * 70), legend_y + 25))
+        
+        # Add hint text
+        hint_text = self.font.render("Press 'S' to toggle strategy advice", True, (200, 200, 200))
+        self.surface.blit(hint_text, (20, STRATEGY_HEIGHT - 30))
+        
+        # Draw the strategy surface to the screen
+        screen.blit(self.surface, (20, screen.get_height() - STRATEGY_HEIGHT - 20))
+
 
 class ParticleSystem:
 
@@ -567,6 +1191,8 @@ chip_images = {}
 for value in CHIP_VALUES:
     chip_images[value] = load_image(
         os.path.join("assets", "chips", f"chip_{value}.png"), (60, 60))
+    
+placeholder_chip = load_image(os.path.join("assets", "chips", "chip_placeholder.png"), (60, 60))
 
 # Card values
 card_values = {
@@ -588,7 +1214,8 @@ card_values = {
 
 # Shuffle deck
 def shuffle_deck():
-    deck = [(v, s) for s in suits for v in values]
+    logging.info("Shuffling the deck...")
+    deck = [(v, s) for s in suits for v in values] * 8
     random.shuffle(deck)
     return deck
 
@@ -1111,7 +1738,7 @@ def main_menu():
     clock = pygame.time.Clock()
 
     # Initialize menu state
-    menu_option = 0  # 0 = Play, 1 = Achievements, 2 = Quit
+    menu_option = 0  # 0 = Play, 1 = Achievements, 2 = AI Settings, 3 = Quit
 
     # Menu loop
     running = True
@@ -1122,14 +1749,16 @@ def main_menu():
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_UP:
-                    menu_option = (menu_option - 1) % 3
+                    menu_option = (menu_option - 1) % 4  # 4 options now
                 elif event.key == pygame.K_DOWN:
-                    menu_option = (menu_option + 1) % 3
+                    menu_option = (menu_option + 1) % 4  # 4 options now
                 elif event.key == pygame.K_RETURN:
                     if menu_option == 0:
                         return "PLAY"
                     elif menu_option == 1:
                         return "ACHIEVEMENTS"
+                    elif menu_option == 2:
+                        return "AI_SETTINGS"  # New option for AI settings
                     else:
                         return "QUIT"
 
@@ -1141,13 +1770,17 @@ def main_menu():
                                           200, 50)
                 achievements_button = pygame.Rect(WIDTH // 2 - 100,
                                                   HEIGHT // 2 + 20, 200, 50)
-                quit_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 90,
+                ai_settings_button = pygame.Rect(WIDTH // 2 - 100,
+                                                 HEIGHT // 2 + 90, 200, 50)  # New button
+                quit_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT // 2 + 160,
                                           200, 50)
 
                 if play_button.collidepoint(mouse_pos):
                     return "PLAY"
                 elif achievements_button.collidepoint(mouse_pos):
                     return "ACHIEVEMENTS"
+                elif ai_settings_button.collidepoint(mouse_pos):
+                    return "AI_SETTINGS"  # Handle AI settings
                 elif quit_button.collidepoint(mouse_pos):
                     return "QUIT"
 
@@ -1174,7 +1807,7 @@ def main_menu():
                     (WIDTH // 2 - title_text.get_width() // 2, HEIGHT // 4))
 
         # Draw menu options
-        options = ["Play Game", "Achievements", "Quit"]
+        options = ["Play Game", "Achievements", "AI Settings", "Quit"]  # Added AI Settings
         for i, option in enumerate(options):
             color = GOLD if i == menu_option else WHITE
             button_rect = pygame.Rect(WIDTH // 2 - 100,
@@ -1199,14 +1832,32 @@ def main_menu():
         pygame.display.flip()
         clock.tick(60)
 
+dealer_ai = BlackjackAI("Beginner")
+
+def update_card_count(self, card):
+    """Update the running count for card counting (Expert level)"""
+    if self.difficulty != "Expert":
+        return
+        
+    value = get_card_value(card)
+    if value >= 10 or value == 1:  # High cards (10, J, Q, K, A)
+        self.card_count -= 1
+    elif 2 <= value <= 6:  # Low cards
+        self.card_count += 1
 
 # Main game function
 def main():
+    global dealer_ai, ai_difficulty
+    
+    # Initialize AI with default difficulty
+
+    dealer_ai = BlackjackAI(ai_difficulty)
+
     logging.info("Starting new game session")
-
-
+    
     dealer_welcome = pygame.mixer.Sound("assets/sounds/dealer_welcome.wav")
     dealer_welcome.play()
+    
     # Set up display
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Blackjack Deluxe")
@@ -1261,6 +1912,9 @@ def main():
     show_dealer_cards = False
     split_results = []  # Store results for each split hand
 
+    # Initialize strategy assistant
+    strategy_assistant = StrategyAssistant()
+
     # Game loop
     running = True
     while running:
@@ -1268,6 +1922,18 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_s:
+                    strategy_assistant.toggle()
+
+                # Change AI difficulty (optional)
+                if event.key == pygame.K_1:
+                    dealer_ai.set_difficulty("Beginner")
+                elif event.key == pygame.K_2:
+                    dealer_ai.set_difficulty("Intermediate")
+                elif event.key == pygame.K_3:
+                    dealer_ai.set_difficulty("Expert")
 
             # Mouse click event
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -1283,6 +1949,7 @@ def main():
                                 # Make sure bet doesn't exceed max or player's money
                                 if current_bet + value <= MAX_BET and current_bet + value <= player_money:
                                     current_bet += value
+                                    logging.info(f"Player placed a bet of ${value}. Total bet: ${current_bet}")
                                     # Create chip animation
                                     chip_animations.append(
                                         ChipAnimation(
@@ -1310,6 +1977,7 @@ def main():
                         # Player first card
                         player_card = deal_card(deck)
                         player_hands[0].append(player_card)
+                        dealer_ai.update_card_count(player_card)  # Update card count
                         card_animations.append(
                             create_deal_animation(player_card, deck_pos,
                                                   (WIDTH // 2 - CARD_WIDTH -
@@ -1319,6 +1987,7 @@ def main():
                         # Dealer first card
                         dealer_card = deal_card(deck)
                         dealer_hand.append(dealer_card)
+                        dealer_ai.update_card_count(dealer_card)  # Update card count
                         card_animations.append(
                             create_deal_animation(dealer_card, deck_pos,
                                                   (WIDTH // 2 - CARD_WIDTH -
@@ -1328,6 +1997,7 @@ def main():
                         # Player second card
                         player_card = deal_card(deck)
                         player_hands[0].append(player_card)
+                        dealer_ai.update_card_count(player_card)  # Update card count
                         card_animations.append(
                             create_deal_animation(
                                 player_card, deck_pos,
@@ -1337,6 +2007,7 @@ def main():
                         # Dealer second card (face down)
                         dealer_card = deal_card(deck)
                         dealer_hand.append(dealer_card)
+                        dealer_ai.update_card_count(dealer_card)  # Update card count
                         card_animations.append(
                             create_deal_animation(
                                 dealer_card, deck_pos,
@@ -1357,6 +2028,9 @@ def main():
                                           (WIDTH // 2 - 150, HEIGHT - 150),
                                           (WIDTH // 2 - 150, HEIGHT - 300)))
                         chip_place.play()
+
+                        # Track insurance action
+                        dealer_ai.track_player_action("INSURANCE", player_hand, current_bet)
 
                         # Check if dealer has a natural Blackjack
                         if calculate_hand(dealer_hand) == 21:
@@ -1388,6 +2062,8 @@ def main():
                     if hit_button.collidepoint(mouse_pos):
                         player_card = deal_card(deck)
                         player_hand.append(player_card)
+                        dealer_ai.update_card_count(player_card)  # Update card count
+                        dealer_ai.track_player_action("HIT", player_hand, current_bet)  # Track action
 
                         # Calculate position based on number of cards and current hand index
                         offset = len(player_hand) - 3
@@ -1427,6 +2103,8 @@ def main():
                                         TextEffect(result,
                                                    (WIDTH // 2, HEIGHT // 2),
                                                    RED))
+                                    lose = pygame.mixer.Sound(
+                                        "assets/sounds/lose.wav")
                                     lose.play()
                                     particle_systems.extend(
                                         check_achievements(
@@ -1438,6 +2116,7 @@ def main():
 
                     # Stand button
                     elif stand_button.collidepoint(mouse_pos):
+                        dealer_ai.track_player_action("STAND", player_hand, current_bet)  # Track action
                         if current_hand_index < len(player_hands) - 1:
                             # If there are more split hands, move to the next one
                             split_results.append("STAND")
@@ -1474,6 +2153,8 @@ def main():
                             # Deal one card to player
                             player_card = deal_card(deck)
                             player_hand.append(player_card)
+                            dealer_ai.update_card_count(player_card)  # Update card count
+                            dealer_ai.track_player_action("DOUBLE", player_hand, current_bet)  # Track action
 
                             # Calculate y offset for split hands
                             y_offset = current_hand_index * 100
@@ -1528,6 +2209,7 @@ def main():
                             # Deal a new card to the first hand
                             player_card = deal_card(deck)
                             player_hand.append(player_card)
+                            dealer_ai.update_card_count(player_card)  # Update card count
                             card_animations.append(
                                 create_deal_animation(
                                     player_card, (WIDTH - CARD_WIDTH - 50, 50),
@@ -1536,10 +2218,14 @@ def main():
                             # Deal a new card to the second hand
                             second_card = deal_card(deck)
                             player_hands[1].append(second_card)
+                            dealer_ai.update_card_count(second_card)  # Update card count
                             card_animations.append(
                                 create_deal_animation(
                                     second_card, (WIDTH - CARD_WIDTH - 50, 50),
                                     (WIDTH // 2 + 10, HEIGHT // 2 + 150)))
+
+                            # Track split action
+                            dealer_ai.track_player_action("SPLIT", player_hand, current_bet)
 
                             # Record split for achievements
                             stats["splits"] += 1
@@ -1634,144 +2320,98 @@ def main():
             # Calculate dealer's hand value
             dealer_value = calculate_hand(dealer_hand)
 
-            # Dealer hits on 16 or less, stands on 17 or more
-            if dealer_value < 17:
+            # Use AI to determine if dealer should hit
+            remaining_cards_ratio = len(deck) / 52
+            should_hit = dealer_ai.should_hit(dealer_hand, dealer_hand[0], remaining_cards_ratio)
+            
+            if should_hit:
                 dealer_card = deal_card(deck)
                 dealer_hand.append(dealer_card)
-
-                # Calculate position based on number of cards
-                offset = len(dealer_hand) - 3
+                dealer_ai.update_card_count(dealer_card)  # Update card count
+                
                 card_animations.append(
-                    create_deal_animation(dealer_card,
-                                          (WIDTH - CARD_WIDTH - 50, 50),
-                                          (WIDTH // 2 + CARD_WIDTH +
-                                           offset * 30, HEIGHT // 2 - 150)))
+                    create_deal_animation(
+                        dealer_card, 
+                        (WIDTH - CARD_WIDTH - 50, 50),
+                        (WIDTH // 2 + len(dealer_hand) * 20, HEIGHT // 2 - 150)
+                    )
+                )
+                card_flip.play()
             else:
-                # Process insurance if dealer has blackjack
-                if calculate_hand(dealer_hand) == 21 and len(dealer_hand) == 2:
-                    if insurance_bet > 0:
-                        # Insurance pays 2:1
-                        player_money += insurance_bet * 3
-                        stats["insurance_wins"] += 1
-                        text_effects.append(
-                            TextEffect("Insurance Win!",
-                                       (WIDTH // 2, HEIGHT // 2 - 100), GREEN))
-
-                # Determine winner for each hand
+                # Dealer is done hitting, determine results
+                dealer_value = calculate_hand(dealer_hand)
                 game_state = "GAME_OVER"
-
-                # If there are split hands, evaluate each one
+        
+                # Handle results for each player hand
                 if len(player_hands) > 1:
-                    total_winnings = 0
-
                     for i, hand in enumerate(player_hands):
-                        hand_result = split_results[i] if i < len(
-                            split_results) else "UNKNOWN"
-
-                        # Skip already busted hands
-                        if hand_result == "BUST!":
-                            # Already lost the bet
-                            continue
-
                         player_value = calculate_hand(hand)
-
-                        # Handle double down (bet is doubled)
-                        hand_bet = current_bet * 2 if hand_result == "DOUBLE" else current_bet
-
-                        if player_value > 21:
-                            # Player busts, player loses
-                            player_lose = pygame.mixer.Sound(
-                                "assets/sounds/player_lose.wav")
-                            player_lose.play()
-                            player_money = int(player_money - hand_bet)
-                            split_results[i] = "LOSE"
-                        elif dealer_value > 21 and player_value <= 21:
-                            # Dealer busts, player wins
-                            player_win = pygame.mixer.Sound(
-                                "assets/sounds/player_win.wav")
-                            player_win.play()
-                            total_winnings += hand_bet * 2  # Return bet + winnings
+                
+                        # Skip hands that already busted
+                        if i < len(split_results) and "BUST" in split_results[i]:
+                            continue
+                
+                        # For hands that were doubled
+                        is_doubled = i < len(split_results) and "DOUBLE" in split_results[i]
+                        hand_bet = current_bet * 2 if is_doubled else current_bet
+                
+                        if dealer_value > 21:  # Dealer busts
                             split_results[i] = "WIN"
-                        elif dealer_value > player_value:
-                            # Dealer wins
-                            player_lose = pygame.mixer.Sound(
-                                "assets/sounds/player_lose.wav")
-                            player_lose.play()
-                            player_money = int(player_money - hand_bet)
-                            split_results[i] = "LOSE"
-                        elif dealer_value < player_value and player_value <= 21:
-                            # Player wins
-                            player_win = pygame.mixer.Sound(
-                                "assets/sounds/player_win.wav")
-                            player_win.play()
-                            total_winnings += hand_bet * 2  # Return bet + winnings
+                            player_money += hand_bet * 2
+                            stats["dealer_busts"] += 1
+                            dealer_bust = pygame.mixer.Sound("assets/sounds/dealer_bust.wav")
+                            dealer_bust.play()
+                        elif player_value > dealer_value:  # Player wins
                             split_results[i] = "WIN"
-                        else:
-                            # Push (tie)
+                            player_money += hand_bet * 2
+                            win = pygame.mixer.Sound("assets/sounds/win.wav")
+                            win.play()
+                        elif player_value == dealer_value:  # Push
+                            split_results[i] = "PUSH"
+                            player_money += hand_bet
                             push = pygame.mixer.Sound("assets/sounds/push.wav")
                             push.play()
-                            total_winnings += hand_bet  # Return bet
-                            split_results[i] = "PUSH"
-
-                    # Add winnings to player's money
-                    player_money += total_winnings
-
-                    # Set overall result
-                    if dealer_value > 21:
-                        result = "DEALER BUSTS!"
-                    else:
-                        result = "HANDS SETTLED"
-
-                    text_effects.append(
-                        TextEffect(result, (WIDTH // 2, HEIGHT // 2 - 100),
-                                   GREEN if dealer_value > 21 else WHITE))
+                        else:  # Dealer wins
+                            split_results[i] = "LOSE"
+                            lose = pygame.mixer.Sound("assets/sounds/lose.wav")
+                            lose.play()
                 else:
-                    # Single hand evaluation
-                    player_value = calculate_hand(player_hands[0])
-
-                    if dealer_value > 21:
+                    # Single hand
+                    player_hand = player_hands[0]
+                    player_value = calculate_hand(player_hand)
+                    
+                    if dealer_value > 21:  # Dealer busts
                         result = "DEALER BUSTS!"
-                        dealer_busts = pygame.mixer.Sound(
-                            "assets/sounds/dealer_bust.wav")
-                        dealer_busts.play()
-                        player_money += current_bet * 2  # Return bet + winnings
-                        text_effects.append(
-                            TextEffect(result, (WIDTH // 2, HEIGHT // 2),
-                                       GREEN))
-                        win.play()
-                    elif dealer_value > player_value:
-                        result = "DEALER WINS!"
-                        dealer_wins = pygame.mixer.Sound(
-                            "assets/sounds/dealer_win.wav")
-                        dealer_wins.play()
-                        player_money = int(player_money - current_bet)
-                        text_effects.append(
-                            TextEffect(result, (WIDTH // 2, HEIGHT // 2), RED))
-                        lose.play()
-                    elif dealer_value < player_value:
+                        player_money += current_bet * 2
+                        stats["dealer_busts"] += 1
+                        dealer_bust = pygame.mixer.Sound("assets/sounds/dealer_bust.wav")
+                        dealer_bust.play()
+                        text_effects.append(TextEffect(result, (WIDTH // 2, HEIGHT // 2), GREEN))
+                    elif player_value > dealer_value:  # Player wins
                         result = "YOU WIN!"
-                        player_wins = pygame.mixer.Sound(
-                            "assets/sounds/player_win.wav")
-                        player_wins.play()
-                        player_money += current_bet * 2  # Return bet + winnings
-                        text_effects.append(
-                            TextEffect(result, (WIDTH // 2, HEIGHT // 2),
-                                       GREEN))
+                        player_money += current_bet * 2
+                        win = pygame.mixer.Sound("assets/sounds/win.wav")
                         win.play()
-                    else:
+                        text_effects.append(TextEffect(result, (WIDTH // 2, HEIGHT // 2), GREEN))
+                    elif player_value == dealer_value:  # Push
                         result = "PUSH"
-                        player_money += current_bet  # Return bet
+                        player_money += current_bet
                         push = pygame.mixer.Sound("assets/sounds/push.wav")
                         push.play()
-                        text_effects.append(
-                            TextEffect(result, (WIDTH // 2, HEIGHT // 2),
-                                       BLUE))
-
+                        text_effects.append(TextEffect(result, (WIDTH // 2, HEIGHT // 2), BLUE))
+                    else:  # Dealer wins
+                        result = "DEALER WINS"
+                        lose = pygame.mixer.Sound("assets/sounds/lose.wav")
+                        lose.play()
+                        text_effects.append(TextEffect(result, (WIDTH // 2, HEIGHT // 2), RED))
+            
+                # Check achievements
                 particle_systems.extend(
-                    check_achievements(game_state, result, player_hands[0],
-                                       dealer_hand, player_money, current_bet,
-                                       achievements_unlocked, text_effects,
-                                       particle_systems, stats) or [])
+                    check_achievements(
+                        game_state, result, player_hand, dealer_hand,
+                        player_money, current_bet, achievements_unlocked,
+                        text_effects, particle_systems, stats) or []
+                )
 
         # Draw game
         screen.fill(BLACK)
@@ -1781,6 +2421,14 @@ def main():
 
         # Draw deck
         screen.blit(CARD_BACK, (WIDTH - CARD_WIDTH - 50, 50))
+
+        ai_text = FONT.render(f"Dealer AI: {ai_difficulty}", True, GOLD)
+        screen.blit(ai_text, (WIDTH - ai_text.get_width() - 155, 20))  # Top-right corner
+
+        if dealer_hand:
+            dealer_up_card = dealer_hand[0] if dealer_hand else None
+            current_player_hand = player_hands[current_hand_index] if player_hands else []
+            strategy_assistant.draw(screen, current_player_hand, dealer_up_card)
 
         # Draw dealer's cards
         if dealer_hand:
@@ -1811,15 +2459,13 @@ def main():
                         (WIDTH // 2 - CARD_WIDTH - 10 + i *
                          (CARD_WIDTH + 20), HEIGHT // 2 + 50 + y_offset))
 
-                # Draw hand value - FIXED POSITION
-                # Move the text to the left side of the cards to avoid overlap
+                # Draw hand value
                 value_text = FONT.render(
                     f"Hand {hand_index + 1}: {calculate_hand(hand)}", True,
                     WHITE)
                 screen.blit(
                     value_text,
-                    (WIDTH // 2 - 250, HEIGHT // 2 + 80 +
-                     y_offset))  # Changed from HEIGHT//2 + 160 + y_offset
+                    (WIDTH // 2 - 250, HEIGHT // 2 + 80 + y_offset))
 
                 # For split hands in game over state, show result
                 if game_state == "GAME_OVER" and len(
@@ -1829,11 +2475,10 @@ def main():
                         GREEN if split_results[hand_index] == "WIN" else
                         RED if split_results[hand_index] == "LOSE"
                         or split_results[hand_index] == "BUST!" else BLUE)
-                    # Also move the result text to be adjacent to the hand value
                     screen.blit(
                         result_text,
                         (WIDTH // 2 - 100, HEIGHT // 2 + 80 + y_offset)
-                    )  # Changed from WIDTH//2 + 100, HEIGHT//2 + 160 + y_offset
+                    )
 
         # Draw money and bet information
         money_text = FONT.render(f"Money: ${player_money}", True, GOLD)
@@ -1979,17 +2624,14 @@ def main():
             if animation.complete:
                 continue
 
-    # Check if this is the dealer's face down card
             is_dealer_face_down = False
             if card in dealer_hand and dealer_hand.index(
                     card) == 1 and not show_dealer_cards:
                 is_dealer_face_down = True
 
             if is_dealer_face_down:
-                # For the dealer's face-down card, use CARD_BACK for both front and back
                 animation.draw(screen, card_images[card], CARD_BACK)
             else:
-                # For other cards, use the card's front image and CARD_BACK as the back image
                 animation.draw(screen, card_images[card], CARD_BACK)
 
         # Draw chip animations
@@ -2010,7 +2652,6 @@ def main():
 
         # Draw achievements notification if any were unlocked this hand
         if achievements_unlocked:
-            # Create achievements area
             achievements_area = pygame.Rect(
                 WIDTH - 300, 150, 250, 100 + len(achievements_unlocked) * 40)
             pygame.draw.rect(screen, (0, 0, 0, 180),
@@ -2022,14 +2663,12 @@ def main():
                              2,
                              border_radius=10)
 
-            # Draw header
             header_font = pygame.font.Font(None, 28)
             header_text = header_font.render("Recent Achievements", True, GOLD)
             screen.blit(header_text,
                         (WIDTH - 300 +
                          (250 - header_text.get_width()) // 2, 160))
 
-            # Draw achievement names
             for i, key in enumerate(achievements_unlocked):
                 achievement_font = pygame.font.Font(None, 24)
                 ach_text = achievement_font.render(ACHIEVEMENTS[key]["name"],
@@ -2059,22 +2698,25 @@ def main():
 # Quit pygame
     pygame.quit()
 
-
 # Run the game
 if __name__ == "__main__":
     # Execute game
     while True:
         # Show the main menu and get the player's choice
         option = main_menu()
-
+        
         if option == "PLAY":
             # Start a new game
             main()
         elif option == "ACHIEVEMENTS":
             # Show the achievements screen
             show_achievements_screen()
+        elif option == "AI_SETTINGS":
+            # Show AI difficulty settings
+            ai_difficulty = ai_difficulty_menu()
+            dealer_ai.set_difficulty(ai_difficulty)
         else:  # QUIT
             # Exit the game
             break
-
+    
     pygame.quit()
