@@ -8,13 +8,12 @@ Blackjack Deluxe is an advanced Python implementation of the classic casino card
 ### Core Gameplay
 - **Realistic Blackjack Gameplay**: Play against a dealer with standard Blackjack rules
 - **Multiple Game Modes**: Standard table and VIP room with higher stakes
-- **Card Counting**: Track cards with a built-in card counter
 - **Strategy Assistant**: Get real-time recommendations based on basic strategy and card counting
 
 ### VIP Experience
 - **VIP Room**: High-stakes table with special rules (min $10,000 bet)
 - **Exclusive VIP Table Design**: Premium visual experience
-- **Special VIP Rules**: Double after split, surrender option
+- **Special VIP Rules**: Surrender option
 
 ### Visual & Audio Enhancements
 - **Smooth Animations**: Card dealing, chip animations, and particle effects
