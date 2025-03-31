@@ -32,14 +32,11 @@ Blackjack Deluxe is an advanced Python implementation of the classic casino card
 - **Double Down**: Double your bet for one more card
 - **Insurance**: Hedge against dealer blackjack
 - **Achievement System**: 30+ unique achievements to unlock
-- **Performance Analytics**: Track your playing statistics
 - **Risk Assessment**: Advanced probabilistic modeling of game outcomes
 
 ### Strategy Tools
 - **Multiple Strategy Modes**: Conservative, Balanced, and Aggressive
 - **Probability Overlays**: See bust chances and expected values
-- **Decision History**: Review your recent plays
-- **Heatmaps**: Visualize your strategy performance
 
 ## Requirements
 - **Python 3.x**
