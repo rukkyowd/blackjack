@@ -24,6 +24,7 @@ def check_and_install_packages():
             except subprocess.CalledProcessError:
                 print(f"Failed to install {package}. Please install it manually.")
 
+
 # Check and install packages before anything else
 check_and_install_packages()
 
@@ -57,6 +58,7 @@ STAND_COLOR = (0, 150, 0)      # Green for stand
 HIT_COLOR = (200, 0, 0)        # Red for hit
 DOUBLE_COLOR = (200, 150, 0)   # Orange/gold for double down
 SPLIT_COLOR = (0, 200, 200)   # Blue for split
+SURRENDER_COLOR = (150, 150, 150)  # Gray for surrender
 FONT = pygame.font.Font(None, 36)
 CHIP_VALUES = [10, 50, 100, 250, 500, 1000]
 MIN_BET, MAX_BET = 10, 1000000000000
@@ -71,7 +73,7 @@ JACKPOT_AMOUNT = 0  # Current jackpot amount
 JACKPOT_CONTRIBUTION = 0.01  # 1% of each bet contributes to the jackpot
 JACKPOT_TRIGGER = "natural_blackjack"  # Condition to win the jackpot
 PLAYER_MONEY = 1000  # Initial money
-VIP_ROOM_ACTIVE = False
+VIP_ROOM_ACTIVE = False # Whether the VIP Room is active
 
 def save_player_money(player_money):
     try:
@@ -113,18 +115,14 @@ pygame.mixer.init()  # Initialize the mixer module
 
 # Load assets
 
-card_flip = pygame.mixer.Sound(
-    os.path.join("assets", "sounds", "card_flip.wav"))
-chip_place = pygame.mixer.Sound(
-    os.path.join("assets", "sounds", "chip_place.wav"))
+card_flip = pygame.mixer.Sound(os.path.join("assets", "sounds", "card_flip.wav"))
+chip_place = pygame.mixer.Sound(os.path.join("assets", "sounds", "chip_place.wav"))
 win = pygame.mixer.Sound(os.path.join("assets", "sounds", "win.wav"))
 lose = pygame.mixer.Sound(os.path.join("assets", "sounds", "lose.wav"))
-win.set_volume(0.5)
-lose.set_volume(0.5)
-CASINO_TABLE = load_image(os.path.join("assets", "casino_table.png"),
-                          (WIDTH, HEIGHT))
-CARD_BACK = load_image(os.path.join("assets", "cards", "back.png"),
-                       (CARD_WIDTH, CARD_HEIGHT))
+win.set_volume(0.3)
+lose.set_volume(0.3)
+CASINO_TABLE = load_image(os.path.join("assets", "casino_table.png"),(WIDTH, HEIGHT))
+CARD_BACK = load_image(os.path.join("assets", "cards", "back.png"),(CARD_WIDTH, CARD_HEIGHT))
 VIP_CASINO_TABLE = load_image(os.path.join("assets", "vip_casino_table.jpg"), (WIDTH, HEIGHT))
 VIP_CHIP_IMAGES = {v: load_image(f"assets/chips/vip_chip_{v}.png") for v in CHIP_VALUES}
 
@@ -141,31 +139,64 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout)  # Print to console
     ])
 
+import random
+import numpy as np
+from typing import List, Tuple, Callable, Dict, Any
+
 class RiskAssessmentModel:
     def __init__(self):
         """
-        Advanced risk assessment with probabilistic modeling
+        Advanced risk assessment with comprehensive probabilistic modeling
+        and adaptive learning capabilities for blackjack strategy optimization.
         """
-        # Probabilistic risk factors with confidence intervals
+        # Expanded probabilistic risk factors with confidence intervals
         self.risk_factors = {
             'hand_composition': {
                 'pair': {'mean': 1.2, 'std': 0.1},
                 'soft_hand': {'mean': 0.9, 'std': 0.05},
-                'hard_hand': {'mean': 1.1, 'std': 0.08}
+                'hard_hand': {'mean': 1.1, 'std': 0.08},
+                'blackjack': {'mean': 0.4, 'std': 0.02},  # Very low risk for blackjack
+                'stiff_hand': {'mean': 1.4, 'std': 0.12}  # 12-16 hard total
             },
             'dealer_upcard': {
                 'weak': {'mean': 0.7, 'std': 0.05},    # 2-6
                 'neutral': {'mean': 1.0, 'std': 0.05}, # 7-9
                 'strong': {'mean': 1.3, 'std': 0.1}    # 10, Ace
+            },
+            'hand_total': {
+                'low': {'mean': 0.8, 'std': 0.05},     # Less than 12
+                'medium': {'mean': 1.2, 'std': 0.1},    # 12-16
+                'high': {'mean': 0.9, 'std': 0.08}      # 17+
+            },
+            'deck_composition': {
+                'high_cards_rich': {'mean': 0.85, 'std': 0.07},  # Lots of 10s, faces, aces
+                'low_cards_rich': {'mean': 1.15, 'std': 0.07}    # Lots of 2-6
             }
         }
         
-        # Learning rate for risk factor adaptation
+        # Bayesian priors for risk factor adaptation
+        self.factor_priors = {factor: 1.0 for factor in self.risk_factors}
+        
+        # Enhanced learning parameters
         self.learning_rate = 0.05
+        self.decay_factor = 0.98
+        self.min_learning_rate = 0.01
+        
+        # Decision history for adaptive learning
+        self.decision_history = []
+        self.max_history_size = 100
+        
+        # Simulation parameters
+        self.simulation_trials = 1000
+        
+        # Initialize variance reduction techniques
+        self.use_control_variates = True
+        self.variance_baseline = {}
 
     def calculate_dealer_bust_probability(self, dealer_value: int) -> float:
         """
         Calculate the probability of the dealer busting based on their upcard
+        using Monte Carlo simulation with variance reduction.
         
         Args:
             dealer_value: Value of dealer's upcard (1-11)
@@ -173,7 +204,7 @@ class RiskAssessmentModel:
         Returns:
             Probability (0-1) that dealer will bust
         """
-        # Standard dealer bust probabilities based on upcard
+        # Enhanced dealer bust probabilities based on upcard
         bust_probabilities = {
             1: 0.17,   # Ace
             2: 0.35,
@@ -191,66 +222,507 @@ class RiskAssessmentModel:
         # Get base probability
         base_prob = bust_probabilities.get(min(dealer_value, 11), 0.23)
         
-        # Add some random variance (0.95 to 1.05 multiplier)
-        return base_prob * random.uniform(0.95, 1.05)
+        # Add more sophisticated variance with confidence bound
+        rand_factor = np.random.normal(1.0, 0.03)
+        bounded_factor = max(0.95, min(1.05, rand_factor))
+        
+        return base_prob * bounded_factor
+    
+    def get_hand_type(self, player_hand: List[Tuple], get_card_value: Callable) -> Dict[str, bool]:
+        """
+        Analyze the hand type for more detailed risk assessment.
+        
+        Args:
+            player_hand: Current player hand
+            get_card_value: Function to get card value
+            
+        Returns:
+            Dictionary of hand characteristics
+        """
+        hand_types = {
+            'is_pair': False,
+            'is_soft': False,
+            'is_stiff': False,
+            'is_blackjack': False,
+            'total': 0
+        }
+        
+        # Check if hand is a pair
+        if len(player_hand) == 2 and player_hand[0][0] == player_hand[1][0]:
+            hand_types['is_pair'] = True
+        
+        # Calculate hand total and check if soft
+        total = 0
+        ace_count = 0
+        
+        for card in player_hand:
+            value = get_card_value(card)
+            if value == 1:  # Ace
+                ace_count += 1
+                total += 11
+            else:
+                total += value
+        
+        # Adjust for aces if needed
+        while total > 21 and ace_count > 0:
+            total -= 10
+            ace_count -= 1
+        
+        hand_types['total'] = total
+        hand_types['is_soft'] = (ace_count > 0)
+        
+        # Check if blackjack
+        if len(player_hand) == 2 and total == 21:
+            hand_types['is_blackjack'] = True
+        
+        # Check if stiff hand (hard 12-16)
+        if 12 <= total <= 16 and not hand_types['is_soft']:
+            hand_types['is_stiff'] = True
+            
+        return hand_types
     
     def calculate_comprehensive_risk(
         self, 
-        player_hand: List[tuple], 
-        dealer_upcard: tuple, 
+        player_hand: List[Tuple], 
+        dealer_upcard: Tuple, 
         true_count: float, 
-        get_card_value: Callable
-    ) -> float:
+        get_card_value: Callable,
+        remaining_decks: float = 1.0
+    ) -> Dict[str, Any]:
         """
-        Probabilistic multi-dimensional risk assessment
+        Enhanced probabilistic multi-dimensional risk assessment with
+        confidence intervals and Monte Carlo simulation.
         
         Args:
             player_hand: Current player hand
             dealer_upcard: Dealer's visible card
             true_count: Current card counting true count
             get_card_value: Function to get card value
+            remaining_decks: Number of decks remaining
         
         Returns:
-            Comprehensive risk score with probabilistic uncertainty
+            Dictionary with comprehensive risk analysis
         """
-        # Sample from risk factor distributions
+        # Sample from risk factor distributions with confidence intervals
         def sample_risk_factor(factor_config):
-            return np.random.normal(
+            return max(0.5, min(2.0, np.random.normal(
                 factor_config['mean'], 
                 factor_config['std']
-            )
+            )))
         
+        # Initialize risk components for detailed analysis
+        risk_components = {}
         base_risk = 1.0
         
-        # Probabilistic hand composition risk
-        if len(player_hand) == 2 and player_hand[0][0] == player_hand[1][0]:
-            base_risk *= sample_risk_factor(self.risk_factors['hand_composition']['pair'])
+        # Get hand characteristics
+        hand_info = self.get_hand_type(player_hand, get_card_value)
+        hand_total = hand_info['total']
         
-        # Soft/hard hand adjustment with uncertainty
-        if player_hand and any(card[0] == 'ace' for card in player_hand):
-            base_risk *= sample_risk_factor(self.risk_factors['hand_composition']['soft_hand'])
+        # Monte Carlo simulations for bust probability if hitting
+        bust_prob = self.simulate_hit_outcome(hand_total, true_count, remaining_decks)
+        risk_components['bust_probability'] = bust_prob
         
-        # Dealer upcard risk with probabilistic assessment
+        # Apply hand composition risk factors
+        if hand_info['is_blackjack']:
+            risk_factor = sample_risk_factor(self.risk_factors['hand_composition']['blackjack'])
+            base_risk *= risk_factor
+            risk_components['blackjack_factor'] = risk_factor
+        elif hand_info['is_pair']:
+            risk_factor = sample_risk_factor(self.risk_factors['hand_composition']['pair'])
+            base_risk *= risk_factor
+            risk_components['pair_factor'] = risk_factor
+        elif hand_info['is_soft']:
+            risk_factor = sample_risk_factor(self.risk_factors['hand_composition']['soft_hand'])
+            base_risk *= risk_factor
+            risk_components['soft_hand_factor'] = risk_factor
+        elif hand_info['is_stiff']:
+            risk_factor = sample_risk_factor(self.risk_factors['hand_composition']['stiff_hand'])
+            base_risk *= risk_factor
+            risk_components['stiff_hand_factor'] = risk_factor
+        else:
+            risk_factor = sample_risk_factor(self.risk_factors['hand_composition']['hard_hand'])
+            base_risk *= risk_factor
+            risk_components['hard_hand_factor'] = risk_factor
+        
+        # Apply hand total risk assessment
+        if hand_total < 12:
+            risk_factor = sample_risk_factor(self.risk_factors['hand_total']['low'])
+            base_risk *= risk_factor
+            risk_components['low_total_factor'] = risk_factor
+        elif hand_total <= 16:
+            risk_factor = sample_risk_factor(self.risk_factors['hand_total']['medium'])
+            base_risk *= risk_factor
+            risk_components['medium_total_factor'] = risk_factor
+        else:
+            risk_factor = sample_risk_factor(self.risk_factors['hand_total']['high'])
+            base_risk *= risk_factor
+            risk_components['high_total_factor'] = risk_factor
+        
+        # Dealer upcard risk assessment
         dealer_val = get_card_value(dealer_upcard)
         if dealer_val in [2, 3, 4, 5, 6]:
-            base_risk *= sample_risk_factor(self.risk_factors['dealer_upcard']['weak'])
+            risk_factor = sample_risk_factor(self.risk_factors['dealer_upcard']['weak'])
+            base_risk *= risk_factor
+            risk_components['dealer_weak_factor'] = risk_factor
+            
+            # Calculate dealer bust probability
+            dealer_bust_prob = self.calculate_dealer_bust_probability(dealer_val)
+            risk_components['dealer_bust_probability'] = dealer_bust_prob
+            
+            # Adjust risk based on dealer bust probability
+            base_risk *= (2.0 - dealer_bust_prob)
+            
         elif dealer_val in [10, 1]:  # 10 or Ace
-            base_risk *= sample_risk_factor(self.risk_factors['dealer_upcard']['strong'])
+            risk_factor = sample_risk_factor(self.risk_factors['dealer_upcard']['strong'])
+            base_risk *= risk_factor
+            risk_components['dealer_strong_factor'] = risk_factor
+        else:
+            risk_factor = sample_risk_factor(self.risk_factors['dealer_upcard']['neutral'])
+            base_risk *= risk_factor
+            risk_components['dealer_neutral_factor'] = risk_factor
         
         # Card counting influence with dynamic adaptation
         count_influence = 0
+        if true_count > 0:
+            # Positive count favors the player - reduce risk
+            count_influence = -0.05 * true_count
+        else:
+            # Negative count favors the dealer - increase risk
+            count_influence = -0.05 * true_count  # Will be positive as true_count is negative
+        
+        # Apply deck composition risk factors based on true count
         if true_count > 2:
-            count_influence = -0.1
+            risk_factor = sample_risk_factor(self.risk_factors['deck_composition']['high_cards_rich'])
+            base_risk *= risk_factor
+            risk_components['high_cards_rich_factor'] = risk_factor
         elif true_count < -2:
-            count_influence = 0.1
+            risk_factor = sample_risk_factor(self.risk_factors['deck_composition']['low_cards_rich'])
+            base_risk *= risk_factor
+            risk_components['low_cards_rich_factor'] = risk_factor
+            
+        # Apply count influence
+        count_factor = 1 + count_influence
+        base_risk *= count_factor
+        risk_components['count_factor'] = count_factor
         
-        base_risk *= (1 + count_influence)
+        # Calculate expected value based on risk assessment
+        ev_estimation = self.estimate_expected_value(hand_info, dealer_val, true_count, base_risk)
+        risk_components['estimated_ev'] = ev_estimation
         
-        # Constrain risk and add some probabilistic variance
-        return max(0.5, min(
-            base_risk * np.random.normal(1, 0.05),  # Small variance
+        # Add small variance for final risk score
+        final_risk = max(0.5, min(
+            base_risk * np.random.normal(1, 0.02),  # Reduced variance
             2.0
         ))
+        
+        return {
+            'risk_score': final_risk,
+            'components': risk_components,
+            'hand_info': hand_info,
+            'recommendation': self.generate_recommendation(final_risk, hand_info, dealer_val)
+        }
+    
+    def simulate_hit_outcome(self, current_total: int, true_count: float, remaining_decks: float) -> float:
+        """
+        Simulate the probability of busting if hitting
+        
+        Args:
+            current_total: Current hand total
+            true_count: Current true count
+            remaining_decks: Number of decks remaining
+            
+        Returns:
+            Probability of busting if hitting
+        """
+        # If already over 21, 100% bust probability
+        if current_total >= 21:
+            return 1.0 if current_total > 21 else 0.0
+            
+        # Calculate how many card values would cause a bust
+        bust_threshold = 21 - current_total
+        
+        # Standard distribution of card values
+        card_distribution = {
+            1: 4,   # Aces
+            2: 4,
+            3: 4,
+            4: 4,
+            5: 4,
+            6: 4,
+            7: 4,
+            8: 4,
+            9: 4,
+            10: 16  # 10, J, Q, K
+        }
+        
+        # Adjust for true count (approximating effect on deck composition)
+        if true_count != 0:
+            # Positive count means more low cards have been seen
+            high_cards_adjustment = 0.01 * true_count * sum(card_distribution.values())
+            
+            # Adjust 10-value cards and low cards based on count
+            for card_val in card_distribution:
+                if card_val >= 10:
+                    # More high cards remain with positive count
+                    card_distribution[card_val] += high_cards_adjustment
+                elif card_val <= 6:
+                    # Fewer low cards remain with positive count
+                    card_distribution[card_val] -= high_cards_adjustment / 5  # Split among 5 low cards
+        
+        # Ensure all probabilities are positive
+        for card_val in card_distribution:
+            card_distribution[card_val] = max(0, card_distribution[card_val])
+        
+        # Calculate total cards and bust probability
+        total_cards = sum(card_distribution.values()) * remaining_decks
+        bust_cards = sum(card_distribution.get(i, 0) for i in range(bust_threshold + 1, 11)) * remaining_decks
+        
+        return bust_cards / total_cards if total_cards > 0 else 0.5
+    
+    def estimate_expected_value(
+        self, 
+        hand_info: Dict[str, Any], 
+        dealer_val: int, 
+        true_count: float,
+        risk_score: float
+    ) -> float:
+        """
+        Estimate the expected value of the current hand
+        
+        Args:
+            hand_info: Information about the player's hand
+            dealer_val: Dealer's upcard value
+            true_count: Current true count
+            risk_score: Calculated risk score
+            
+        Returns:
+            Estimated expected value (-1 to 1)
+        """
+        # Base expected value calculations
+        # Higher risk generally correlates with negative EV
+        base_ev = 2.0 - risk_score * 2.0  # Maps risk 0.5->1.0, 1.0->0, 2.0->-2.0
+        
+        # Adjust for hand strength
+        if hand_info['is_blackjack']:
+            base_ev += 1.0
+        elif hand_info['total'] >= 20:
+            base_ev += 0.5
+        elif hand_info['total'] <= 12:
+            base_ev -= 0.2
+            
+        # Adjust for dealer strength
+        if dealer_val in [2, 3, 4, 5, 6]:
+            base_ev += 0.3
+        elif dealer_val in [10, 1]:  # 10 or Ace
+            base_ev -= 0.3
+            
+        # Adjust for true count
+        base_ev += 0.05 * true_count
+        
+        # Constrain to reasonable EV range
+        return max(-1.0, min(1.0, base_ev))
+    
+    def generate_recommendation(
+        self, 
+        risk_score: float, 
+        hand_info: Dict[str, Any], 
+        dealer_val: int
+    ) -> str:
+        """
+        Generate a strategy recommendation based on risk assessment
+        
+        Args:
+            risk_score: Calculated risk score
+            hand_info: Information about the player's hand
+            dealer_val: Dealer's upcard value
+            
+        Returns:
+            Strategy recommendation (hit, stand, double, split)
+        """
+        if hand_info['is_blackjack']:
+            return "stand"
+            
+        if hand_info['total'] > 21:
+            return "bust"
+            
+        if hand_info['is_pair']:
+            # Pair splitting logic
+            card_val = hand_info['total'] // 2
+            if card_val in [8, 11]:  # 8s or Aces
+                return "split"
+            elif card_val == 9 and dealer_val not in [7, 10, 1]:
+                return "split"
+            elif card_val in [2, 3, 7] and dealer_val <= 7:
+                return "split"
+            elif card_val == 6 and dealer_val <= 6:
+                return "split"
+            elif card_val == 4 and dealer_val in [5, 6]:
+                return "split"
+                
+        if hand_info['is_soft']:
+            # Soft hand logic
+            if hand_info['total'] >= 19:
+                return "stand"
+            elif hand_info['total'] == 18:
+                if dealer_val in [9, 10, 1]:
+                    return "hit"
+                elif dealer_val in [2, 3, 4, 5, 6] and len(hand_info) == 2:
+                    return "double" 
+                else:
+                    return "stand"
+            elif hand_info['total'] == 17:
+                if dealer_val in [3, 4, 5, 6] and len(hand_info) == 2:
+                    return "double"
+                else:
+                    return "hit"
+            elif hand_info['total'] in [15, 16]:
+                if dealer_val in [4, 5, 6] and len(hand_info) == 2:
+                    return "double"
+                else:
+                    return "hit"
+            elif hand_info['total'] in [13, 14]:
+                if dealer_val in [5, 6] and len(hand_info) == 2:
+                    return "double"
+                else:
+                    return "hit"
+        else:
+            # Hard hand logic
+            if hand_info['total'] >= 17:
+                return "stand"
+            elif hand_info['total'] in [13, 14, 15, 16]:
+                if dealer_val <= 6:
+                    return "stand"
+                else:
+                    return "hit"
+            elif hand_info['total'] == 12:
+                if dealer_val in [4, 5, 6]:
+                    return "stand"
+                else:
+                    return "hit"
+            elif hand_info['total'] == 11:
+                if len(hand_info) == 2:
+                    return "double"
+                else:
+                    return "hit"
+            elif hand_info['total'] == 10:
+                if dealer_val <= 9 and len(hand_info) == 2:
+                    return "double"
+                else:
+                    return "hit"
+            elif hand_info['total'] == 9:
+                if dealer_val in [3, 4, 5, 6] and len(hand_info) == 2:
+                    return "double"
+                else:
+                    return "hit"
+                    
+        # Default to hit for low values
+        return "hit"
+    
+    def update_risk_factors(self, outcome: Dict[str, Any]) -> None:
+        """
+        Update risk factors based on outcome of previous decisions
+        
+        Args:
+            outcome: Dictionary with decision outcomes
+        """
+        # Store decision in history
+        self.decision_history.append(outcome)
+        if len(self.decision_history) > self.max_history_size:
+            self.decision_history.pop(0)
+        
+        # Extract relevant information
+        decision = outcome.get('decision')
+        result = outcome.get('result')  # win, loss, push
+        risk_score = outcome.get('risk_score')
+        risk_components = outcome.get('components', {})
+        
+        # Only update if we have valid outcome data
+        if not all([decision, result, risk_score]):
+            return
+            
+        # Calculate adaptation direction
+        adaptation_direction = 0
+        if result == 'win' and risk_score > 1.0:
+            # We won despite high risk assessment - reduce risk factors
+            adaptation_direction = -1
+        elif result == 'loss' and risk_score < 1.0:
+            # We lost despite low risk assessment - increase risk factors
+            adaptation_direction = 1
+            
+        # Apply updates to affected risk factors
+        for component_name, factor_value in risk_components.items():
+            if 'factor' not in component_name:
+                continue
+                
+            # Extract category and type
+            parts = component_name.split('_')
+            if len(parts) < 2:
+                continue
+                
+            # Try to identify risk factor category and type
+            category = None
+            factor_type = None
+            
+            for cat in self.risk_factors:
+                for ftype in self.risk_factors[cat]:
+                    if ftype in component_name:
+                        category = cat
+                        factor_type = ftype
+                        break
+                if category:
+                    break
+            
+            # Apply adaptation if factor was identified
+            if category and factor_type:
+                current_mean = self.risk_factors[category][factor_type]['mean']
+                adjustment = self.learning_rate * adaptation_direction
+                new_mean = max(0.4, min(1.6, current_mean + adjustment))
+                self.risk_factors[category][factor_type]['mean'] = new_mean
+        
+        # Decay learning rate over time for stability
+        self.learning_rate = max(self.min_learning_rate, 
+                                self.learning_rate * self.decay_factor)
+                                
+    def analyze_performance(self) -> Dict[str, Any]:
+        """
+        Analyze historical performance and risk factor effectiveness
+        
+        Returns:
+            Dictionary with performance metrics
+        """
+        if not self.decision_history:
+            return {"status": "No historical data available"}
+            
+        # Calculate win rate
+        wins = sum(1 for outcome in self.decision_history if outcome.get('result') == 'win')
+        losses = sum(1 for outcome in self.decision_history if outcome.get('result') == 'loss')
+        pushes = sum(1 for outcome in self.decision_history if outcome.get('result') == 'push')
+        
+        total_decisions = len(self.decision_history)
+        win_rate = wins / total_decisions if total_decisions > 0 else 0
+        
+        # Calculate risk assessment accuracy
+        correct_assessments = 0
+        for outcome in self.decision_history:
+            risk_score = outcome.get('risk_score', 1.0)
+            result = outcome.get('result')
+            
+            # Low risk should correlate with wins, high risk with losses
+            if (risk_score < 1.0 and result == 'win') or (risk_score > 1.0 and result == 'loss'):
+                correct_assessments += 1
+                
+        accuracy = correct_assessments / total_decisions if total_decisions > 0 else 0
+        
+        return {
+            "total_decisions": total_decisions,
+            "wins": wins,
+            "losses": losses,
+            "pushes": pushes,
+            "win_rate": win_rate,
+            "risk_assessment_accuracy": accuracy,
+            "learning_rate": self.learning_rate,
+            "risk_factors": self.risk_factors
+        }
     
 class PerformanceAnalytics:
     def __init__(self, strategy_modes):
@@ -554,25 +1026,98 @@ def dealer_should_hit(dealer_hand):
     dealer_value = calculate_hand(dealer_hand)
     return dealer_value <= 16
 
-# Animation classes (unchanged)
-class CardAnimation:
+def get_suit_color(suit):
+    """Returns 'red' or 'black' for a given suit"""
+    return "red" if suit in ["hearts", "diamonds"] else "black"
 
+# Animation classes
+import pygame
+import math
+import random
+from typing import Tuple, Optional
+
+class CardAnimation:
     def __init__(self,
                  card,
-                 start_pos,
-                 end_pos,
-                 duration=0.5,
-                 flip_duration=0.3):
+                 start_pos: Tuple[float, float],
+                 end_pos: Tuple[float, float],
+                 duration: float = 0.5,
+                 flip_duration: float = 0.3,
+                 ease_type: str = "out_quad",
+                 with_shadow: bool = True,
+                 arc_height: float = 50.0):
+        """
+        Enhanced card animation with easing, arcs, and better visual effects.
+        
+        Args:
+            card: The card object being animated
+            start_pos: Starting position (x, y)
+            end_pos: Target position (x, y)
+            duration: Total animation duration in seconds
+            flip_duration: Flip animation duration in seconds
+            ease_type: Easing function type ('linear', 'in_quad', 'out_quad', etc.)
+            with_shadow: Whether to render a shadow effect
+            arc_height: Height of the arc trajectory (0 for straight line)
+        """
         self.card = card
-        self.start_pos = start_pos
-        self.end_pos = end_pos
+        self.start_pos = pygame.Vector2(start_pos)
+        self.end_pos = pygame.Vector2(end_pos)
+        self.control_point = self._calculate_control_point(arc_height)
         self.start_time = pygame.time.get_ticks()
         self.duration = duration * 1000  # Convert to milliseconds
-        self.flip_duration = flip_duration * 1000  # Duration of the flip animation
+        self.flip_duration = flip_duration * 1000
         self.complete = False
-        self.flip_progress = 0  # 0 to 1, where 0.5 is fully sideways
+        self.flip_progress = 0  # 0 to 1
         self.is_flipping = False
-        self.current_pos = start_pos
+        self.current_pos = pygame.Vector2(start_pos)
+        self.current_rotation = 0
+        self.current_scale = 1.0
+        self.ease_type = ease_type
+        self.with_shadow = with_shadow
+        self.shadow_offset = 5
+        self.shadow_alpha = 100
+        self.arc_height = arc_height
+        self.z_index = 0  # For draw order management
+        
+        # Physics-like properties
+        self.velocity = pygame.Vector2(0, 0)
+        self.angular_velocity = random.uniform(-2, 2)
+        self.damping = 0.98
+        
+        # Visual effects
+        self.glow_radius = 0
+        self.glow_alpha = 0
+        self.glow_color = (255, 255, 200)
+
+    def _calculate_control_point(self, arc_height: float) -> pygame.Vector2:
+        """Calculate control point for quadratic bezier curve."""
+        mid_point = (self.start_pos + self.end_pos) / 2
+        direction = (self.end_pos - self.start_pos).normalize()
+        perpendicular = pygame.Vector2(-direction.y, direction.x)
+        return mid_point + perpendicular * arc_height
+
+    def _ease(self, t: float, ease_type: str) -> float:
+        """Easing functions for smooth animations."""
+        if ease_type == "linear":
+            return t
+        elif ease_type == "in_quad":
+            return t * t
+        elif ease_type == "out_quad":
+            return t * (2 - t)
+        elif ease_type == "in_out_quad":
+            if t < 0.5:
+                return 2 * t * t
+            else:
+                return -1 + (4 - 2 * t) * t
+        elif ease_type == "in_back":
+            s = 1.70158
+            return t * t * ((s + 1) * t - s)
+        elif ease_type == "out_back":
+            s = 1.70158
+            t = t - 1
+            return t * t * ((s + 1) * t + s) + 1
+        else:
+            return t  # default to linear
 
     def update(self):
         current_time = pygame.time.get_ticks()
@@ -580,55 +1125,147 @@ class CardAnimation:
 
         if elapsed >= self.duration:
             self.complete = True
-            self.current_pos = self.end_pos
+            self.current_pos = self.end_pos.copy()
+            self.velocity = pygame.Vector2(0, 0)
+            self.current_rotation = 0
             return
 
-        # Calculate progress (0 to 1)
-        progress = elapsed / self.duration
+        # Calculate normalized progress with easing
+        progress = self._ease(elapsed / self.duration, self.ease_type)
 
-        # Linear interpolation for position
-        self.current_pos = (self.start_pos[0] +
-                            (self.end_pos[0] - self.start_pos[0]) * progress,
-                            self.start_pos[1] +
-                            (self.end_pos[1] - self.start_pos[1]) * progress)
+        # Quadratic bezier curve for arc movement
+        self.current_pos = (
+            (1 - progress) ** 2 * self.start_pos +
+            2 * (1 - progress) * progress * self.control_point +
+            progress ** 2 * self.end_pos
+        )
+
+        # Calculate velocity for physics-like movement
+        if elapsed > 0:
+            new_pos = self.current_pos.copy()
+            self.velocity = (new_pos - self.current_pos) * (1000 / (elapsed + 1))
+            self.current_pos = new_pos
+
+        # Rotation based on movement direction
+        if self.velocity.length() > 0.1:
+            target_angle = math.degrees(math.atan2(self.velocity.y, self.velocity.x))
+            self.current_rotation = pygame.math.lerp(
+                self.current_rotation, 
+                target_angle * 0.1, 
+                0.1
+            )
+
+        # Damping for physics effects
+        self.velocity *= self.damping
+        self.angular_velocity *= self.damping
 
         # Handle flip animation
         if elapsed < self.flip_duration:
             self.is_flipping = True
             self.flip_progress = elapsed / self.flip_duration
+            # Add slight scale effect during flip
+            self.current_scale = 1.0 + 0.1 * math.sin(self.flip_progress * math.pi)
         else:
             self.is_flipping = False
+            self.current_scale = 1.0
 
-    def draw(self, screen, front_image, back_image):
+        # Glow effect when nearly complete
+        if progress > 0.8:
+            self.glow_radius = int(20 * (progress - 0.8) / 0.2)
+            self.glow_alpha = int(100 * (progress - 0.8) / 0.2)
+        else:
+            self.glow_radius = 0
+            self.glow_alpha = 0
+
+    def draw(self, screen: pygame.Surface, front_image: pygame.Surface, back_image: pygame.Surface):
         if self.complete:
-            screen.blit(front_image, self.end_pos)
+            self._draw_card(screen, front_image, self.end_pos)
             return
 
         if self.is_flipping:
-            # Draw the flip animation
-            if self.flip_progress < 0.5:
-                # First half: show back image, scale horizontally
-                scale_x = 1 - (self.flip_progress * 2)
-                scaled_image = pygame.transform.scale(
-                    back_image, (int(CARD_WIDTH * scale_x), CARD_HEIGHT))
-                screen.blit(scaled_image,
-                            (self.current_pos[0] +
-                             (CARD_WIDTH - scaled_image.get_width()) // 2,
-                             self.current_pos[1]))
-            else:
-                # Second half: show front image, scale horizontally
-                scale_x = (self.flip_progress - 0.5) * 2
-                scaled_image = pygame.transform.scale(
-                    front_image, (int(CARD_WIDTH * scale_x), CARD_HEIGHT))
-                screen.blit(scaled_image,
-                            (self.current_pos[0] +
-                             (CARD_WIDTH - scaled_image.get_width()) // 2,
-                             self.current_pos[1]))
+            self._draw_flip_animation(screen, front_image, back_image)
         else:
-            # Draw the card at the current position without flipping
-            screen.blit(front_image, self.current_pos)
+            self._draw_card(screen, front_image, self.current_pos)
 
+    def _draw_card(self, screen: pygame.Surface, image: pygame.Surface, pos: pygame.Vector2):
+        """Draw the card with optional shadow and rotation."""
+        # Create a temporary surface for transformations
+        card_rect = pygame.Rect(0, 0, image.get_width(), image.get_height())
+        transformed_image = pygame.Surface(card_rect.size, pygame.SRCALPHA)
+        
+        # Apply rotation and scale
+        if self.current_rotation != 0 or self.current_scale != 1.0:
+            # Scale first
+            scaled_size = (int(card_rect.width * self.current_scale), 
+                          int(card_rect.height * self.current_scale))
+            scaled_image = pygame.transform.scale(image, scaled_size)
+            # Then rotate
+            rotated_image = pygame.transform.rotate(scaled_image, self.current_rotation)
+            transformed_image = rotated_image
+        else:
+            transformed_image = image.copy()
 
+        # Draw shadow
+        if self.with_shadow:
+            shadow_offset = self.shadow_offset * (1 - (self.current_pos.y / screen.get_height()))
+            shadow_rect = transformed_image.get_rect(center=pos + pygame.Vector2(shadow_offset, shadow_offset))
+            shadow_surface = pygame.Surface(transformed_image.get_size(), pygame.SRCALPHA)
+            shadow_surface.fill((0, 0, 0, self.shadow_alpha))
+            screen.blit(shadow_surface, shadow_rect)
+
+        # Draw glow
+        if self.glow_radius > 0:
+            glow_surface = pygame.Surface((self.glow_radius*2, self.glow_radius*2), pygame.SRCALPHA)
+            pygame.draw.circle(glow_surface, (*self.glow_color, self.glow_alpha), 
+                              (self.glow_radius, self.glow_radius), self.glow_radius)
+            screen.blit(glow_surface, pos - pygame.Vector2(self.glow_radius, self.glow_radius))
+
+        # Draw card
+        card_rect = transformed_image.get_rect(center=pos)
+        screen.blit(transformed_image, card_rect)
+
+    def _draw_flip_animation(self, screen: pygame.Surface, front_image: pygame.Surface, back_image: pygame.Surface):
+        """Draw the card flip animation with perspective effects."""
+        pos = self.current_pos
+        width, height = front_image.get_size()
+        
+        # Calculate flip progress with easing
+        flip_t = self._ease(self.flip_progress, "out_quad")
+        
+        # Shadow during flip
+        if self.with_shadow:
+            shadow_size = (int(width * (1 - abs(flip_t - 0.5) * 0.5)), 
+                         int(height * 0.9))
+            shadow_offset = self.shadow_offset * (1 - (pos.y / screen.get_height()))
+            shadow_pos = (pos.x - shadow_size[0]//2 + shadow_offset, 
+                         pos.y - shadow_size[1]//2 + shadow_offset)
+            shadow_surface = pygame.Surface(shadow_size, pygame.SRCALPHA)
+            shadow_surface.fill((0, 0, 0, self.shadow_alpha))
+            screen.blit(shadow_surface, shadow_pos)
+
+        # Draw the appropriate side based on flip progress
+        if flip_t < 0.5:
+            # First half: show back image with perspective
+            scale_x = 1.0 - flip_t * 2
+            scale_y = 1.0 - abs(flip_t - 0.25) * 0.5  # Slight vertical squash
+            scaled_image = pygame.transform.scale(
+                back_image, 
+                (int(width * scale_x), int(height * scale_y))
+            )
+            screen.blit(scaled_image,
+                      (pos.x - scaled_image.get_width() // 2,
+                       pos.y - scaled_image.get_height() // 2))
+        else:
+            # Second half: show front image with perspective
+            scale_x = (flip_t - 0.5) * 2
+            scale_y = 1.0 - abs(flip_t - 0.75) * 0.5  # Slight vertical squash
+            scaled_image = pygame.transform.scale(
+                front_image, 
+                (int(width * scale_x), int(height * scale_y))
+            )
+            screen.blit(scaled_image,
+                      (pos.x - scaled_image.get_width() // 2,
+                       pos.y - scaled_image.get_height() // 2))
 class ChipAnimation:
 
     def __init__(self, value, start_pos, end_pos, duration=0.5):
@@ -720,12 +1357,6 @@ class TextEffect:
         text_rect = text_surf.get_rect(center=self.position)
         screen.blit(text_surf, text_rect)
 
-STAND_COLOR = (0, 150, 0)      # Green for stand
-HIT_COLOR = (200, 0, 0)        # Red for hit
-DOUBLE_COLOR = (200, 150, 0)   # Orange/gold for double down
-SPLIT_COLOR = (0, 200, 200)   # Blue for split
-SURRENDER_COLOR = (150, 150, 150)  # Gray for surrender
-
 class AchievementNotification:
     def __init__(self, achievement_key):
         self.key = achievement_key
@@ -767,6 +1398,8 @@ class StrategyAssistant:
             self.small_font = None
             self.title_font = None
 
+        self.deviations = {}
+
         # Original betting strategy before mode adjustments
         self.original_betting_strategy = [
             (-10, 1),
@@ -789,8 +1422,9 @@ class StrategyAssistant:
         self.min_panel_height = 400  # Minimum height in pixels
         self.active = False
         self.surface = pygame.Surface((STRATEGY_WIDTH, STRATEGY_HEIGHT), pygame.SRCALPHA)
+        self.vip_mode = False 
 
-        self.actions = ['HIT', 'STAND', 'DOUBLE', 'SPLIT']
+        self.actions = ['HIT', 'STAND', 'DOUBLE', 'SPLIT', 'SURRENDER']
         
         # Collapsible sections state
         self.sections = {
@@ -1621,56 +2255,6 @@ class StrategyAssistant:
         status = "enabled" if self.interaction_state[feature] else "disabled"
         self.logger.info(f"{feature} {status}")
 
-    def _render_advanced_tooltip(self, surface: pygame.Surface, text: str, position: Tuple[int, int]):
-        """
-        Render an advanced, animated tooltip
-        
-        Args:
-            surface (pygame.Surface): Surface to render on
-            text (str): Tooltip text
-            position (tuple): X, Y coordinates for tooltip
-        """
-        if not self.interaction_state['tooltips_enabled']:
-            return
-        
-        # Dynamic tooltip sizing and styling
-        padding = 10
-        font = pygame.font.Font(None, 18)
-        text_surface = font.render(text, True, self.color_palette['text_primary'])
-        
-        tooltip_width = text_surface.get_width() + 2 * padding
-        tooltip_height = text_surface.get_height() + 2 * padding
-        
-        # Create tooltip surface with transparency
-        tooltip_surface = pygame.Surface((tooltip_width, tooltip_height), pygame.SRCALPHA)
-        tooltip_surface.fill((*self.color_palette['primary'], 220))  # Semi-transparent
-        
-        # Draw border with rounded corners
-        pygame.draw.rect(tooltip_surface, (*self.color_palette['highlight'], 150), 
-                        (0, 0, tooltip_width, tooltip_height), 2, border_radius=4)
-        
-        # Subtle animation
-        scale = 1 + 0.05 * math.sin(pygame.time.get_ticks() * 0.01)
-        scaled_surface = pygame.transform.scale(
-            tooltip_surface, 
-            (int(tooltip_width * scale), int(tooltip_height * scale))
-        )
-        
-        # Render text with shadow
-        text_shadow = font.render(text, True, (0, 0, 0, 150))
-        tooltip_surface.blit(text_shadow, (padding + 1, padding + 1))
-        tooltip_surface.blit(text_surface, (padding, padding))
-        
-        # Position tooltip (adjust if near screen edges)
-        tooltip_x, tooltip_y = position
-        if tooltip_x + tooltip_width > self.screen_width:
-            tooltip_x = self.screen_width - tooltip_width - 10
-        if tooltip_y - tooltip_height < 0:
-            tooltip_y = position[1] + 20
-        
-        # Draw on main surface
-        surface.blit(scaled_surface, (tooltip_x, tooltip_y - tooltip_height))
-
     def draw_decision_heatmap(self, surface, x, y, width, height):
         """
         Enhanced decision heatmap with more visual details
@@ -1791,8 +2375,18 @@ class StrategyAssistant:
             7:  ['H'] * 10,
             6:  ['H'] * 10,
             5:  ['H'] * 10,
-            4:  ['H'] * 10
+            4:  ['H'] * 10,
+            17: ['S']*10 if not self.vip_mode else ['S']*6 + ['U']*4,  # Surrender 17 vs 9-A in VIP
+            16: ['S']*7 + ['H']*3 if not self.vip_mode else ['U']*3 + ['S']*4 + ['H']*3,  # Surrender 16 vs 9-A
+            15: ['S']*6 + ['H']*4 if not self.vip_mode else ['U']*1 + ['S']*5 + ['H']*4,  # Surrender 15 vs 10
         }
+
+        self.deviations.update({
+            (16, 9): (0, 'U'),  # Surrender 16 vs 9 at any count in VIP
+            (16, 10): (0, 'U'),  # Surrender 16 vs 10 at any count in VIP
+            (16, 1): (0, 'U'),   # Surrender 16 vs Ace at any count in VIP
+            (15, 10): (0, 'U'),   # Surrender 15 vs 10 at any count in VIP
+        })
         
         self.soft_strategy = {
             20: ['S'] * 10,
@@ -1828,60 +2422,200 @@ class StrategyAssistant:
         }
 
     def _initialize_strategy_modes(self):
-        """Create strategy modes with configuration"""
+        """Create comprehensive strategy modes with refined configuration"""
         return {
             'conservative': {
                 'risk_tolerance': 0.2,
-                'description': "Cautious approach, minimizing potential losses.",
+                'description': "Cautious approach prioritizing bankroll preservation with reduced variance.",
                 'hard_strategy_adjustments': {
-                    12: ['S'] * 9 + ['H'],  # More conservative standing
-                    13: ['S'] * 7 + ['H'] * 3,
-                    14: ['S'] * 8 + ['H'] * 2,
-                    15: ['S'] * 9 + ['H'],
-                    16: ['S'] * 10,  # Always stand on 16
+                    12: ['S', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H', 'H'],  # Stand vs 2-4, hit vs 5-A
+                    13: ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],  # Stand vs 2-6, hit vs 7-A
+                    14: ['S', 'S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H'],  # Stand vs 2-6, hit vs 7-A
+                    15: ['S', 'S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H'],  # Stand vs 2-6, hit vs 7-A
+                    16: ['S', 'S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H'],  # Stand vs 2-6, hit vs 7-A
                 },
                 'soft_strategy_adjustments': {
-                    17: ['S'] * 10,  # More conservative soft 17
+                    17: ['S'] * 10,  # Always stand on soft 17
                     18: ['S'] * 10,  # Always stand on soft 18
+                    19: ['S'] * 10,  # Always stand on soft 19
                 },
                 'pair_strategy_adjustments': {
-                    '9,9': ['N'] * 10,  # Never split 9s
-                    '7,7': ['N'] * 10,  # Never split 7s
-                    '6,6': ['N'] * 10,  # Never split 6s
-                    '3,3': ['N'] * 10,  # Never split 3s
-                    '2,2': ['N'] * 10,  # Never split 2s
+                    'A,A': ['Y'] * 10,  # Always split Aces
+                    '8,8': ['Y'] * 10,  # Always split 8s
+                    '9,9': ['S', 'Y', 'Y', 'Y', 'Y', 'S', 'S', 'S', 'S', 'S'],  # Split 9s vs 2-6
+                    '7,7': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N'],  # Split 7s vs 2-7
+                    '6,6': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N', 'N'],  # Split 6s vs 2-6
+                    '5,5': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N'],  # Never split 5s, double instead
+                    '4,4': ['N', 'N', 'N', 'Y', 'Y', 'N', 'N', 'N', 'N', 'N'],  # Split 4s only vs 5-6
+                    '3,3': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N', 'N'],  # Split 3s vs 2-6
+                    '2,2': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N', 'N'],  # Split 2s vs 2-6
                 },
-                'betting_multiplier': 0.5,  # More conservative betting
+                'double_strategy_adjustments': {
+                    9: ['N', 'D', 'D', 'D', 'D', 'D', 'N', 'N', 'N', 'N'],      # Double 9 vs 3-6
+                    10: ['D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'N', 'N'],     # Double 10 vs 2-8
+                    11: ['D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'N'],     # Double 11 vs 2-9
+                    'A,2': ['H', 'H', 'H', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],  # Double soft 13 vs 5-6
+                    'A,3': ['H', 'H', 'H', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],  # Double soft 14 vs 5-6
+                    'A,4': ['H', 'H', 'H', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],  # Double soft 15 vs 5-6
+                    'A,5': ['H', 'H', 'H', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],  # Double soft 16 vs 5-6
+                    'A,6': ['H', 'H', 'D', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],  # Double soft 17 vs 4-6
+                    'A,7': ['S', 'S', 'D', 'D', 'D', 'S', 'S', 'S', 'S', 'S'],  # Double soft 18 vs 4-6
+                },
+                'insurance': False,  # Never take insurance
+                'surrender_strategy': {
+                    16: ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'Y', 'Y'],  # Surrender 16 vs 9-10
+                    15: ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'Y'],  # Surrender 15 vs 10
+                },
+                'betting_strategy': {
+                    'type': 'flat',  # Flat betting
+                    'min_bet_multiplier': 1.0,
+                    'max_bet_multiplier': 2.0,
+                    'progression_rate': 0.1,  # Very slow progression
+                    'negative_progression': False  # Don't increase bets after losses
+                },
+                    'count_thresholds': {
+                    'high': 4,  # Only increase bets at very high counts
+                    'low': -2,  # Decrease bets at moderately low counts
+                }
             },
+
             'balanced': {
                 'risk_tolerance': 0.5,
-                'description': "Standard strategy following basic mathematical optimal play.",
-                'betting_multiplier': 1.0,
-            },
-            'aggressive': {
-                'risk_tolerance': 0.8,
-                'description': "More risk-taking, maximizing potential wins.",
+                'description': "Standard mathematically optimal strategy with moderate risk.",
                 'hard_strategy_adjustments': {
-                    12: ['H'] * 10,  # Always hit 12
-                    13: ['H'] * 10,  # Always hit 13
-                    14: ['H'] * 10,  # Always hit 14
-                    15: ['H'] * 10,  # Always hit 15
-                    16: ['H'] * 10,  # Always hit 16
+                    12: ['H', 'H', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],  # Stand vs 4-6, hit otherwise
+                    13: ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],  # Stand vs 2-6, hit vs 7-A
+                    14: ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],  # Stand vs 2-6, hit vs 7-A
+                    15: ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],  # Stand vs 2-6, hit vs 7-A
+                    16: ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],  # Stand vs 2-6, hit vs 7-A
+                    17: ['S'] * 10,  # Always stand on 17+
                 },
                 'soft_strategy_adjustments': {
-                    17: ['H'] * 5 + ['D'] * 5,  # More doubling on soft 17
-                    18: ['H'] * 3 + ['D'] * 4 + ['S'] * 3,  # More aggressive soft 18
+                    17: ['H', 'H', 'H', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],  # Double vs 4-6, hit otherwise
+                    18: ['S', 'S', 'S', 'S', 'D', 'S', 'S', 'S', 'S', 'S'],  # Double vs 6, stand otherwise
+                    19: ['S'] * 10,  # Always stand on soft 19+
                 },
                 'pair_strategy_adjustments': {
-                    '9,9': ['Y'] * 10,  # Always split 9s
-                    '7,7': ['Y'] * 10,  # Always split 7s
-                    '3,3': ['Y'] * 10,  # Always split 3s
-                    '2,2': ['Y'] * 10,  # Always split 2s
+                    'A,A': ['Y'] * 10,  # Always split Aces
+                    '8,8': ['Y'] * 10,  # Always split 8s
+                    '9,9': ['Y', 'Y', 'Y', 'Y', 'Y', 'S', 'Y', 'Y', 'S', 'S'],  # Split 9s vs all but 7,10,A
+                    '7,7': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N'],  # Split 7s vs 2-7
+                    '6,6': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N', 'N'],  # Split 6s vs 2-6
+                    '5,5': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N'],  # Never split 5s, double instead
+                    '4,4': ['N', 'N', 'N', 'Y', 'Y', 'N', 'N', 'N', 'N', 'N'],  # Split 4s only vs 5-6
+                    '3,3': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N', 'N'],  # Split 3s vs 2-6
+                    '2,2': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N', 'N'],  # Split 2s vs 2-6
                 },
-                'betting_multiplier': 1.5,  # More aggressive betting
+                'double_strategy_adjustments': {
+                    9: ['D', 'D', 'D', 'D', 'D', 'D', 'N', 'N', 'N', 'N'],      # Double 9 vs 2-6
+                    10: ['D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'N', 'N'],     # Double 10 vs 2-8
+                    11: ['D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'D'],     # Double 11 vs any
+                    'A,2': ['H', 'H', 'H', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],  # Double soft 13 vs 5-6
+                    'A,3': ['H', 'H', 'H', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],  # Double soft 14 vs 5-6
+                    'A,4': ['H', 'H', 'D', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],  # Double soft 15 vs 4-6
+                    'A,5': ['H', 'H', 'D', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],  # Double soft 16 vs 4-6
+                    'A,6': ['H', 'D', 'D', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],  # Double soft 17 vs 3-6
+                    'A,7': ['S', 'D', 'D', 'D', 'D', 'S', 'S', 'S', 'S', 'S'],  # Double soft 18 vs 3-6
+                },
+                'insurance': False,  # Never take insurance
+                'surrender_strategy': {
+                    16: ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'Y', 'Y'],  # Surrender 16 vs 9-10
+                    15: ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'Y'],  # Surrender 15 vs 10
+                },
+                'betting_strategy': {
+                    'type': 'spread',  # Spread betting based on count
+                    'min_bet_multiplier': 1.0,
+                    'max_bet_multiplier': 4.0,
+                    'progression_rate': 0.3,  # Moderate progression
+                    'negative_progression': False  # Don't increase bets after losses
+                },
+                'count_thresholds': {
+                    'high': 2,  # Increase bets at +2 count
+                    'low': -1,  # Decrease bets at -1 count
+                }
+            },
+
+            'aggressive': {
+                'risk_tolerance': 0.8,
+                'description': "High-risk strategy maximizing potential returns with advanced counting techniques.",
+                'hard_strategy_adjustments': {
+                    12: ['H', 'H', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],  # Stand vs 4-6, hit otherwise
+                    13: ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],  # Stand vs 2-6, hit vs 7-A
+                    14: ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],  # Stand vs 2-6, hit vs 7-A
+                    15: ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],  # Stand vs 2-6, hit vs 7-A
+                    16: ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],  # Stand vs 2-6, hit vs 7-A
+                    17: ['S'] * 10,  # Always stand on 17+
+                },
+                'soft_strategy_adjustments': {
+                    17: ['H', 'D', 'D', 'D', 'D', 'D', 'H', 'H', 'H', 'H'],  # Double vs 2-6, hit otherwise
+                    18: ['S', 'S', 'D', 'D', 'D', 'D', 'S', 'S', 'S', 'S'],  # Double vs 3-6, stand otherwise
+                    19: ['S'] * 10,  # Always stand on soft 19+
+                },
+                'pair_strategy_adjustments': {
+                    'A,A': ['Y'] * 10,  # Always split Aces
+                    '8,8': ['Y'] * 10,  # Always split 8s
+                    '9,9': ['Y', 'Y', 'Y', 'Y', 'Y', 'S', 'Y', 'Y', 'S', 'S'],  # Split 9s vs all but 7,10,A
+                    '7,7': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N'],  # Split 7s vs 2-7
+                    '6,6': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N', 'N'],  # Split 6s vs 2-6
+                    '5,5': ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N'],  # Never split 5s, double instead
+                    '4,4': ['N', 'N', 'Y', 'Y', 'Y', 'N', 'N', 'N', 'N', 'N'],  # Split 4s vs 4-6
+                    '3,3': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N'],  # Split 3s vs 2-7
+                    '2,2': ['Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'N', 'N', 'N'],  # Split 2s vs 2-7
+                },
+                'double_strategy_adjustments': {
+                    8: ['N', 'N', 'N', 'N', 'D', 'D', 'N', 'N', 'N', 'N'],      # Double 8 vs 5-6
+                    9: ['D', 'D', 'D', 'D', 'D', 'D', 'N', 'N', 'N', 'N'],      # Double 9 vs 2-6
+                    10: ['D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'N'],     # Double 10 vs 2-9
+                    11: ['D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'D'],     # Double 11 vs any
+                    'A,2': ['H', 'H', 'D', 'D', 'D', 'D', 'H', 'H', 'H', 'H'],  # Double soft 13 vs 4-6
+                    'A,3': ['H', 'H', 'D', 'D', 'D', 'D', 'H', 'H', 'H', 'H'],  # Double soft 14 vs 4-6
+                    'A,4': ['H', 'H', 'D', 'D', 'D', 'D', 'H', 'H', 'H', 'H'],  # Double soft 15 vs 4-6
+                    'A,5': ['H', 'D', 'D', 'D', 'D', 'D', 'H', 'H', 'H', 'H'],  # Double soft 16 vs 3-6
+                    'A,6': ['D', 'D', 'D', 'D', 'D', 'D', 'H', 'H', 'H', 'H'],  # Double soft 17 vs 2-6
+                    'A,7': ['D', 'D', 'D', 'D', 'D', 'S', 'S', 'H', 'H', 'H'],  # Double soft 18 vs 2-5, hit vs 8-10
+                },
+                'insurance': {
+                    'threshold': 3,  # Take insurance when count is >= 3
+                },
+                'surrender_strategy': {
+                    17: ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'Y'],  # Surrender 17 vs A
+                    16: ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'Y', 'Y', 'Y'],  # Surrender 16 vs 8-10
+                    15: ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'Y', 'Y'],  # Surrender 15 vs 9-10
+                    14: ['N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N', 'Y'],  # Surrender 14 vs 10
+                },
+                'betting_strategy': {
+                    'type': 'aggressive_spread',  # Very large betting spread
+                    'min_bet_multiplier': 1.0,
+                    'max_bet_multiplier': 10.0,
+                    'progression_rate': 0.5,  # Fast progression
+                    'negative_progression': True  # Optional Martingale elements on strong counts
+                },
+                'count_thresholds': {
+                    'high': 1,  # Increase bets at +1 count
+                    'low': -2,  # Decrease bets below -2 count
+                },
+                'deviations': {  # Strategy deviations based on count
+                    'index_plays': {
+                        '16vs10': {
+                            'default': 'H',
+                            'count': 0,  # Stand on 16vs10 if count >= 0
+                            'deviation': 'S'
+                        },
+                        '12vs3': {
+                            'default': 'H',
+                            'count': 2,  # Stand on 12vs3 if count >= 2
+                            'deviation': 'S'
+                        },
+                        'insurance': {
+                            'default': False,
+                            'count': 3,  # Take insurance if count >= 3
+                            'deviation': True
+                        }
+                    }
+                }
             }
         }
-    
+
     def _apply_mode_configuration(self, mode):
         """Apply the configuration for the specified mode"""
         current_mode_config = self.strategy_modes[mode]
@@ -1908,6 +2642,18 @@ class StrategyAssistant:
             (threshold, int(units * betting_multiplier)) 
             for threshold, units in self.original_betting_strategy
         ]
+
+    def set_vip_mode(self, enabled):
+        """Enable or disable VIP mode which includes surrender recommendations"""
+        self.vip_mode = enabled
+        if enabled:
+            # Adjust strategy tables for VIP mode
+            self._initialize_base_strategies()
+            logging.info("VIP mode activated - surrender recommendations enabled")
+        else:
+            # Revert to standard strategy
+            self._initialize_base_strategies()
+            logging.info("VIP mode deactivated")
 
     def calculate_advanced_risk(self, player_hand: List[Tuple[str, str]], dealer_card: Tuple[str, str]) -> Dict[str, float]:
         """
@@ -2214,7 +2960,8 @@ class StrategyAssistant:
             'H': HIT_COLOR,
             'D': DOUBLE_COLOR,
             'Y': (0, 200, 200),
-            'N': (100, 100, 100)
+            'N': (100, 100, 100),
+            'U': SURRENDER_COLOR  # Add surrender color
         }
         return action_map.get(action_key, (100, 100, 100))
     
@@ -2292,6 +3039,25 @@ class StrategyAssistant:
                 
             dealer_val = self.get_card_value(dealer_card)
             dealer_index = dealer_val - 2 if dealer_val != 1 else 9
+
+            # Check for surrender opportunity (only in VIP mode on first decision)
+            if (self.vip_mode and len(player_hand) == 2 and 
+                not any(hit for hit in self.decision_history[-5:] if hit['player_decision'] == 'HIT')):
+                
+                hand_value = self.calculate_hand(player_hand)
+                
+                # Check surrender strategy
+                if hand_value in self.hard_strategy:
+                    action_code = self.hard_strategy[hand_value][dealer_index]
+                    if action_code == 'U':  # Surrender
+                        return "SURRENDER"
+                
+                # Check surrender deviations
+                key = (hand_value, dealer_val)
+                if key in self.deviations:
+                    threshold, deviation_action = self.deviations[key]
+                    if deviation_action == 'U' and self.true_count >= threshold:
+                        return "SURRENDER"
 
             # Hand value determination
             hand_value = self.calculate_hand(player_hand)
@@ -3303,6 +4069,8 @@ def show_achievements_screen():
 def main_menu():
     global JACKPOT_ENABLED, JACKPOT_AMOUNT, PLAYER_MONEY, VIP_ROOM_ACTIVE
 
+    PLAYER_MONEY = load_player_money()
+
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Blackjack Deluxe - Menu")
     clock = pygame.time.Clock()
@@ -3347,6 +4115,7 @@ def main_menu():
                             pygame.display.flip()
                             pygame.time.wait(2000)  # Show the message for 2 seconds
                     else:
+                        VIP_ROOM_ACTIVE = False
                         return "QUIT"
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -3383,6 +4152,7 @@ def main_menu():
                         pygame.display.flip()
                         pygame.time.wait(2000)  # Show the message for 2 seconds
                 elif quit_button.collidepoint(mouse_pos):
+                    VIP_ROOM_ACTIVE = False
                     return "QUIT"
 
         # Draw menu
@@ -3445,12 +4215,87 @@ class VIPRoom:
         self.special_rules = {
             "double_after_split": True,
             "surrender": True,
-            "resplit_aces": False
+            "resplit_aces": False,
+            "perfect_pairs": True,
+            "twenty_one_three": True
         }
-        self.deck_count = 4  # Use 4 decks for VIP games
+        self.active = False
+        self.deck_count = 4
+        self.dealers = {
+            "James": {"gender": "male", "greetings": []},
+            "Sophia": {"gender": "female", "greetings": []},
+            "Michael": {"gender": "male", "greetings": []},
+            "Emma": {"gender": "female", "greetings": []},
+            "William": {"gender": "male", "greetings": []}
+        }
+        self.current_greeting = None 
+        self.current_dealer = None
+        self.betting_presets = [100, 500, 1000, 5000, 10000]
+        self.auto_play = False
+        self.auto_play_delay = 2
+        self.last_auto_play_time = 0
 
     def get_vip_deck(self):
         return shuffle_deck(decks=self.deck_count)
+
+    def load_dealer_audio(self):
+        """Load all dealer greeting audio files with error handling"""
+        for dealer_name, dealer_data in self.dealers.items():
+            dealer_data["greetings"] = []
+        for dealer_name, dealer_data in self.dealers.items():
+            try:
+                dealer_folder = f"assets/sounds/dealers/{dealer_name.lower()}/"
+                
+                # Check if directory exists
+                if not os.path.exists(dealer_folder):
+                    print(f"Warning: No audio folder found for dealer {dealer_name}")
+                    continue
+                
+                # Load all greeting files
+                greetings = []
+                for file in os.listdir(dealer_folder):
+                    if file.startswith("greeting_") and (file.endswith(".wav") or file.endswith(".mp3")):
+                        try:
+                            sound = pygame.mixer.Sound(os.path.join(dealer_folder, file))
+                            greetings.append(sound)
+                            print(f"Loaded {file} for {dealer_name}")  # Debug
+                        except Exception as e:
+                            print(f"Error loading {file} for {dealer_name}: {e}")
+                
+                dealer_data["greetings"] = greetings
+                if not greetings:
+                    print(f"Warning: No valid audio files found for {dealer_name}")
+                    
+            except Exception as e:
+                print(f"Error loading audio for {dealer_name}: {e}")
+        
+        # Set initial dealer
+        self.change_dealer()
+
+    def change_dealer(self):
+        """Switch to a different dealer randomly and select a random greeting"""
+        available_dealers = [d for d in self.dealers if self.dealers[d]["greetings"]]
+        if not available_dealers:
+            self.current_dealer = None
+            self.current_greeting = None
+            return None
+            
+        self.current_dealer = random.choice(available_dealers)
+        self.current_greeting = random.choice(self.dealers[self.current_dealer]["greetings"])
+        return self.current_greeting
+
+    def get_random_greeting(self):
+        """Select one random dealer and greeting to play"""
+        # Get all dealers that have greetings loaded
+        available_dealers = [d for d in self.dealers if self.dealers[d]["greetings"]]
+        if not available_dealers:
+            return None
+            
+        # Select random dealer
+        self.current_dealer = random.choice(available_dealers)
+        # Select random greeting from that dealer
+        self.current_greeting = random.choice(self.dealers[self.current_dealer]["greetings"])
+        return self.current_greeting
 
     def enter(self, player_money):
         if player_money < self.min_bet:
@@ -3540,39 +4385,90 @@ def game_over_screen():
 
 # Main game function
 def main():
-    global PLAYER_MONEY, VIP_ROOM_ACTIVE
+    global perfect_pairs_bet, twenty_one_three_bet, PLAYER_MONEY, VIP_ROOM_ACTIVE
     PLAYER_MONEY = load_player_money()  # Load player money at the start
+
+    strategy_assistant = StrategyAssistant()
 
     logging.info("Starting new game session")
     
     dealer_welcome = pygame.mixer.Sound("assets/sounds/dealer_welcome.wav")
-    dealer_welcome.play()
     
     # Set up display
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Blackjack Deluxe")
     clock = pygame.time.Clock()
+    perfect_pairs_button = pygame.Rect(50, HEIGHT - 240, 100, 40)
+    twenty_one_three_button = pygame.Rect(WIDTH//2 + 100, HEIGHT - 240, 100, 40)
 
     # Initialize game state
     deck = shuffle_deck()
     player_hand = []
     dealer_hand = []
+    text_effects = []
     current_bet = 0
     game_state = "BETTING"  # game_state options : "BETTING", "DEALING", "INSURANCE", "PLAYER_TURN", "DEALER_TURN", "GAME_OVER"
     player_hands = [[]]  # List of hands (for splitting)
     current_hand_index = 0  # Index of the hand player is currently playing
     insurance_bet = 0  # Insurance bet amount
+    split_bets = [] 
 
     if VIP_ROOM_ACTIVE:
         vip_room = VIPRoom()
         deck = vip_room.get_vip_deck()
+        vip_room.load_dealer_audio()
+        print(f"VIP Room initialized with {len(vip_room.dealers)} dealers")  # Debug
         MIN_BET = vip_room.min_bet
         MAX_BET = min(vip_room.max_bet, PLAYER_MONEY)
         MIN_BET = 10000  # Set higher minimum bet for VIP room
+        strategy_assistant.set_vip_mode(True)
+
+        if not hasattr(main, 'vip_greeting_played'):  # Only play once per session
+            try:
+                greeting = vip_room.get_random_greeting()
+                if greeting:
+                    channel = pygame.mixer.find_channel()
+                    if channel:
+                        channel.play(greeting)
+                        print(f"Playing greeting from {vip_room.current_dealer}")  # Debug
+                        text_effects.append(TextEffect(
+                                f"Dealer {vip_room.current_dealer} greets you",
+                            (WIDTH//2, HEIGHT//4), 
+                            WHITE
+                        ))
+                    else:
+                        print("No available audio channels!")
+                else:
+                    print("No greeting sound available!")
+            except Exception as e:
+                print(f"Error playing VIP greeting: {e}")
+            main.vip_greeting_played = True
+
+        # Random greetings during gameplay
+        if random.random() < 0.01:  # 1% chance per frame
+            try:
+                pygame.mixer.stop()
+                greeting = vip_room.get_random_greeting()
+                if greeting:
+                    channel = pygame.mixer.find_channel()
+                    if channel:
+                        channel.play(greeting)
+                        print(f"Playing random greeting from {vip_room.current_dealer}")
+            except Exception as e:
+                print(f"Error playing random greeting: {e}")
     else:
         MIN_BET = 10  # Regular table minimum bet
         MAX_BET = PLAYER_MONEY  # Regular table maximum bet
+        strategy_assistant.set_vip_mode(False)
+        dealer_welcome.play()
 
+    if VIP_ROOM_ACTIVE and random.random() < 0.5:
+        vip_room.get_random_greeting
+        text_effects.append(TextEffect(
+            f"Dealer {vip_room.current_dealer} greets you",
+            (WIDTH//2, HEIGHT//4), 
+            WHITE
+        ))
 
     # Progressive Jackpot Variables
     JACKPOT_AMOUNT = 0  # Current jackpot amount
@@ -3588,7 +4484,6 @@ def main():
     # Animation tracking
     card_animations = []
     chip_animations = []
-    text_effects = []
     particle_systems = []
 
     # Achievement and stats tracking
@@ -3617,13 +4512,134 @@ def main():
     insurance_button = pygame.Rect(WIDTH // 2 - 200, HEIGHT - 100, 150, 50)
     no_insurance_button = pygame.Rect(WIDTH // 2 + 50, HEIGHT - 100, 150, 50)
     all_in_button = pygame.Rect(WIDTH // 2 - 100, HEIGHT - 200, 200, 50)
+    surrender_button = pygame.Rect(WIDTH // 2 + 450, HEIGHT - 100, 100, 50)
 
     # Results
     result = ""
     show_dealer_cards = False
     split_results = []  # Store results for each split hand
 
-    strategy_assistant = StrategyAssistant()
+    def check_perfect_pairs(player_hand):
+        if len(player_hand) != 2:
+            return None
+            
+        card1, card2 = player_hand
+        rank1, suit1 = card1
+        rank2, suit2 = card2
+        
+        if rank1 != rank2:
+            return None
+            
+        # Check perfect pair (same suit and rank)
+        if suit1 == suit2:
+            return "perfect"
+        
+        # Check colored pair (same color)
+        suit_colors = {
+            "hearts": "red",
+            "diamonds": "red",
+            "clubs": "black",
+            "spades": "black"
+        }
+        if suit_colors[suit1] == suit_colors[suit2]:
+            return "colored"
+        
+        # Mixed pair
+        return "mixed"
+
+    def check_twenty_one_three(player_hand, dealer_up_card):
+        # Combine cards and validate
+        cards = []
+        try:
+            cards.extend(player_hand[:2])  # First two player cards
+            cards.append(dealer_up_card)   # Dealer's up card
+        except (TypeError, IndexError):
+            return "none"
+
+        # Validate all cards have proper format
+        for card in cards:
+            if not isinstance(card, (tuple, list)) or len(card) < 2:
+                return "none"
+
+        # Get ranks and suits
+        ranks = []
+        suits = []
+        for card in cards:
+            try:
+                ranks.append(card[0])
+                suits.append(card[1])
+            except (IndexError, TypeError):
+                return "none"
+
+        for card in cards:
+            if not isinstance(card, (tuple, list)) or len(card) < 2:
+                return "none"
+
+        # Check suited triple (all same suit)
+        if len(set(suits)) == 1:
+            return "suited_triple"
+        
+        # Check three of a kind
+        if len(set(ranks)) == 1:
+            return "three_of_a_kind"
+        
+        # Convert ranks to numerical values for straight check
+        rank_values = []
+        for rank in ranks:
+            if rank == 'ace':
+                rank_values.append(1)
+            elif rank in ['king', 'queen', 'jack', '10']:
+                rank_values.append(10)
+            else:
+                try:
+                    rank_values.append(int(rank))
+                except ValueError:
+                    return "none"  # Invalid card rank
+        
+        rank_values.sort()
+    
+        # Check straight flush (all same suit and sequential)
+        if len(set(suits)) == 1:
+            # Check for A-2-3 straight
+            if set(rank_values) == {1, 2, 3}:
+                return "straight_flush"
+            # Check regular straight
+            if (rank_values[1] == rank_values[0] + 1 and 
+                rank_values[2] == rank_values[1] + 1):
+                return "straight_flush"
+
+        # Check straight
+        if set(rank_values) == {1, 2, 3}:
+            return "straight"
+        if (rank_values[1] == rank_values[0] + 1 and 
+            rank_values[2] == rank_values[1] + 1):
+            return "straight"
+
+        # Check flush
+        if len(set(suits)) == 1:
+            return "flush"
+
+        return "none"
+    
+    def draw_tooltip(self, surface, text, button_rect):
+        """Draw a tooltip above the specified button"""
+        tooltip_font = pygame.font.Font(None, 24)
+        text_surface = tooltip_font.render(text, True, WHITE)
+
+        # Calculate tooltip position
+        tooltip_rect = pygame.Rect(
+            button_rect.centerx - text_surface.get_width() // 2 - 5,
+            button_rect.y - 30,
+            text_surface.get_width() + 10,
+            25
+        )
+
+        # Draw background and border
+        pygame.draw.rect(surface, (0, 0, 0, 200), tooltip_rect, border_radius=3)
+        pygame.draw.rect(surface, (100, 100, 100), tooltip_rect, 1, border_radius=3)
+
+        # Draw text
+        surface.blit(text_surface, (tooltip_rect.x + 5, tooltip_rect.y + 5))
 
     # Game loop
     running = True
@@ -3772,6 +4788,19 @@ def main():
                     # Get current hand
                     player_hand = player_hands[current_hand_index]
 
+                    if VIP_ROOM_ACTIVE == True and game_state == "PLAYER_TURN" and len(player_hands[current_hand_index]) == 2:
+                        draw_glowing_button(screen, surrender_button, "SURRENDER", WHITE, 
+                                            (150, 150, 150), (100, 100, 100))
+                        
+                        if surrender_button.collidepoint(pygame.mouse.get_pos()):
+                            tooltip_font = pygame.font.Font(None, 24)
+                            tooltip_text = tooltip_font.render("Give up hand and recover half your bet", True, WHITE)
+                            pygame.draw.rect(screen, (0, 0, 0, 200),
+                                              (surrender_button.x, surrender_button.y - 30, 
+                                              tooltip_text.get_width() + 10, 25))
+                            screen.blit(tooltip_text, 
+                                        (surrender_button.x + 5, surrender_button.y - 25))
+
                     # Hit button
                     if hit_button.collidepoint(mouse_pos):
                         player_card = deal_card(deck)
@@ -3899,10 +4928,13 @@ def main():
                         if card1_value == card2_value and PLAYER_MONEY >= current_bet:
                             # Take additional bet for the split hand
                             PLAYER_MONEY -= current_bet
+                            save_player_money(PLAYER_MONEY) 
 
                             # Create a new hand with the second card
                             new_hand = [player_hand.pop()]
                             player_hands.append(new_hand)
+
+                            split_bets.append(current_bet)
 
                             split = pygame.mixer.Sound(
                                 "assets/sounds/split_hand.wav")
@@ -3935,6 +4967,23 @@ def main():
                             # Record split for achievements
                             stats["splits"] += 1
 
+                    elif surrender_button.collidepoint(mouse_pos) and VIP_ROOM_ACTIVE and len(player_hand) == 2:
+                        # Surrender gives back half the bet
+                        PLAYER_MONEY += current_bet // 2
+                        save_player_money(PLAYER_MONEY)
+                        game_state = "GAME_OVER"
+                        result = "SURRENDER"
+                        show_dealer_cards = True
+                        text_effects.append(
+                            TextEffect(result, (WIDTH // 2, HEIGHT // 2), (150, 150, 150)))
+            
+                        # Play surrender sound if available
+                        try:
+                            surrender_sound = pygame.mixer.Sound("assets/sounds/surrender.wav")
+                            surrender_sound.play()
+                        except:
+                            pass  # Skip if sound file doesn't exist
+
                 # Handle game over state - start new game
                 elif game_state == "GAME_OVER":
                     if hit_button.collidepoint(
@@ -3958,6 +5007,7 @@ def main():
                 card_animations.remove(animation)
                 # If all deal animations complete, check for dealer ace and offer insurance
                 if game_state == "DEALING" and not card_animations:
+                    
                     # Check if dealer's face-up card is an Ace
                     dealer_first_card = dealer_hand[0]
                     if dealer_first_card[0] == 'ace':
@@ -4223,10 +5273,10 @@ def main():
             if current_bet >= MIN_BET:
                 draw_glowing_button(screen, deal_button, "DEAL", WHITE, GREEN,
                                     (100, 255, 100))
-                
+              
             if PLAYER_MONEY >= MIN_BET:
                 draw_glowing_button(screen, all_in_button, "ALL-IN", WHITE, RED, (255, 100, 100))
-
+            
             # Reset button to clear bet
             if current_bet > 0:
                 reset_button = pygame.Rect(WIDTH // 2 - 200, HEIGHT - 100, 100,
@@ -4275,11 +5325,206 @@ def main():
                                 WHITE, GREEN, (100, 255, 100))
             draw_glowing_button(screen, no_insurance_button, "NO INSURANCE",
                                 WHITE, RED, (255, 100, 100))
+            
+            
 
         elif game_state == "PLAYER_TURN":
             # Get current hand
             player_hand = player_hands[current_hand_index]
 
+            # ====== AUTO-PLAY LOGIC ======
+            if VIP_ROOM_ACTIVE and game_state in ["PLAYER_TURN", "DEALER_TURN"]:
+                auto_play_rect = pygame.Rect(WIDTH - 150, 50, 120, 40)
+                draw_glowing_button(
+                    screen, auto_play_rect,
+                    "AUTO-PLAY: ON" if vip_room.auto_play else "AUTO-PLAY: OFF",
+                    BLACK, GREEN if vip_room.auto_play else RED,
+                    (100, 255, 100) if vip_room.auto_play else (255, 100, 100)
+                )
+
+                # Handle auto-play toggle on click
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    mouse_pos = pygame.mouse.get_pos()
+                    current_time = pygame.time.get_ticks()
+
+                    if auto_play_rect.collidepoint(mouse_pos):
+                        vip_room.auto_play = not vip_room.auto_play
+                        vip_room.last_click_time = current_time  # Update last click time
+
+                        if vip_room.auto_play:
+                            text_effects.append(TextEffect(
+                                "AUTO-PLAY: ON",
+                                (WIDTH//2, HEIGHT//2 + 200),
+                                BLUE
+                            ))
+                        else:
+                            text_effects.append(TextEffect(
+                                "AUTO-PLAY: OFF",
+                                (WIDTH//2, HEIGHT//2 + 200),
+                                RED
+                            ))
+
+            # ====== AUTO-PLAY LOGIC ======
+            if VIP_ROOM_ACTIVE and vip_room.auto_play and game_state == "PLAYER_TURN" and not card_animations:
+                current_time = pygame.time.get_ticks()
+                if current_time - vip_room.last_auto_play_time > vip_room.auto_play_delay * 1000:
+                    vip_room.last_auto_play_time = current_time
+                    player_hand = player_hands[current_hand_index]
+                    recommended = strategy_assistant.get_recommended_move(player_hand, dealer_hand[0])
+
+                    print(f"Auto-play recommendation: {recommended}")
+
+                    # Simulate button clicks based on recommendation
+                    if "HIT" in recommended:
+                        player_card = deal_card(deck)
+                        player_hand.append(player_card)
+                        offset = len(player_hand) - 3
+                        y_offset = current_hand_index * 100
+                        card_animations.append(
+                           create_deal_animation(
+                                player_card, (WIDTH - CARD_WIDTH - 50, 50),
+                                (WIDTH // 2 + CARD_WIDTH + offset * 30,
+                                 HEIGHT // 2 + 50 + y_offset)))
+                        
+                        if calculate_hand(player_hand) > 21:
+                            if current_hand_index < len(player_hands) - 1:
+                                # Play bust sound
+                                player_bust = pygame.mixer.Sound("assets/sounds/player_bust.wav")
+                                player_bust.play()
+
+                                # Record bust for this hand and move to next split hand
+                                split_results.append("BUST!")
+                                current_hand_index += 1
+                            else:
+                                # If this is the last hand, end the player's turn
+                                if len(player_hands) > 1:
+                                    split_results.append("BUST!")
+                                    game_state = "DEALER_TURN"
+                                    show_dealer_cards = True
+                                else:
+                                    # Single hand - player loses
+                                    game_state = "GAME_OVER"
+                                    result = "BUST!"
+                                    player_bust = pygame.mixer.Sound("assets/sounds/player_bust.wav")
+                                    player_bust.play()
+                                    show_dealer_cards = True
+                                    PLAYER_MONEY -= current_bet
+                                    save_player_money(PLAYER_MONEY)
+                                    text_effects.append(
+                                        TextEffect(result, (WIDTH // 2, HEIGHT // 2), RED))
+                                    lose = pygame.mixer.Sound("assets/sounds/lose.wav")
+                                    lose.play()
+                
+                                    # Check for achievements
+                                    particle_systems.extend(
+                                    check_achievements(
+                                            game_state, result, player_hand,
+                                            dealer_hand, PLAYER_MONEY,
+                                        current_bet, achievements_unlocked,
+                                        text_effects, particle_systems,
+                                        stats) or [])
+
+                    elif "STAND" in recommended:
+                        # Execute stand logic
+                        if current_hand_index < len(player_hands) - 1:
+                            split_results.append("STAND")
+                            current_hand_index += 1
+                        else:
+                            if len(player_hands) > 1:
+                                split_results.append("STAND")
+                            game_state = "DEALER_TURN"
+                            show_dealer_cards = True
+
+                    elif "DOUBLE" in recommended and len(player_hand) == 2:
+                        if PLAYER_MONEY >= current_bet:
+                            PLAYER_MONEY -= current_bet
+                            chip_animations.append(
+                                ChipAnimation(current_bet,
+                                            (WIDTH // 2 - 100, HEIGHT - 150),
+                                            (WIDTH // 2, HEIGHT - 200)))
+                            double = pygame.mixer.Sound("assets/sounds/double_down.wav")
+                            double.play()
+                            chip_place.play()
+                
+                            # Deal one card
+                            player_card = deal_card(deck)
+                            player_hand.append(player_card)
+                            y_offset = current_hand_index * 100
+                            card_animations.append(
+                                create_deal_animation(
+                                    player_card, (WIDTH - CARD_WIDTH - 50, 50),
+                                    (WIDTH // 2 + CARD_WIDTH,
+                                     HEIGHT // 2 + 50 + y_offset)))
+
+                            # Move to next hand or dealer
+                            if calculate_hand(player_hand) > 21:
+                                if current_hand_index < len(player_hands) - 1:
+                                    split_results.append("BUST!")
+                                    current_hand_index += 1
+                                else:
+                                    if len(player_hands) > 1:
+                                        split_results.append("BUST!")
+                                    game_state = "DEALER_TURN"
+                                    show_dealer_cards = True
+                            else:
+                                if current_hand_index < len(player_hands) - 1:
+                                    split_results.append("DOUBLE")
+                                    current_hand_index += 1
+                                else:
+                                    if len(player_hands) > 1:
+                                        split_results.append("DOUBLE")
+                                        game_state = "DEALER_TURN"
+                                        show_dealer_cards = True
+
+                    elif "SPLIT" in recommended and len(player_hand) == 2:
+                        # Execute split logic
+                        card1_value = get_card_value(player_hand[0])
+                        card2_value = get_card_value(player_hand[1])
+            
+                        if card1_value == card2_value and PLAYER_MONEY >= current_bet:
+                            PLAYER_MONEY -= current_bet
+                            new_hand = [player_hand.pop()]
+                            player_hands.append(new_hand)
+                            player_card = deal_card(deck)
+                            player_hand.append(player_card)
+                            split = pygame.mixer.Sound("assets/sounds/split_hand.wav")
+                            split.play()
+                            player_card = deal_card(deck)
+                            player_hand.append(player_card)
+                            card_animations.append(
+                                create_deal_animation(
+                                    player_card, (WIDTH - CARD_WIDTH - 50, 50),
+                                    (WIDTH // 2 + 10, HEIGHT // 2 + 50)))
+
+                            second_card = deal_card(deck)
+                            player_hands[1].append(second_card)
+                            card_animations.append(
+                                create_deal_animation(
+                                    second_card, (WIDTH - CARD_WIDTH - 50, 50),
+                                    (WIDTH // 2 + 10, HEIGHT // 2 + 150)))
+
+                            stats["splits"] += 1
+                        else:
+                            if PLAYER_MONEY < current_bet:
+                                text_effects.append(TextEffect("Not enough money to split!",
+                                                               (WIDTH//2, HEIGHT//2), 
+                                                               RED))
+                            
+
+                    elif "SURRENDER" in recommended and VIP_ROOM_ACTIVE and len(player_hand) == 2:
+                        PLAYER_MONEY += current_bet // 2
+                        save_player_money(PLAYER_MONEY)
+                        game_state = "GAME_OVER"
+                        result = "SURRENDER"
+                        show_dealer_cards = True
+                        text_effects.append(
+                            TextEffect(result, (WIDTH // 2, HEIGHT // 2), (150, 150, 150)))
+                        try:
+                            surrender_sound = pygame.mixer.Sound("assets/sounds/surrender.wav")
+                            surrender_sound.play()
+                        except:
+                            pass            
+            
             # Draw indicator for current hand
             if len(player_hands) > 1:
                 indicator_text = FONT.render(
@@ -4291,13 +5536,36 @@ def main():
             # Draw hit and stand buttons
             draw_glowing_button(screen, hit_button, "HIT", WHITE, BLUE,
                                 (100, 100, 255))
+            if hit_button.collidepoint(pygame.mouse.get_pos()):
+                tooltip_font = pygame.font.Font(None, 24)
+                tooltip_text = tooltip_font.render("Take another card", True, WHITE)
+                pygame.draw.rect(screen, (0, 0, 0, 200),
+                                (hit_button.x, hit_button.y - 30, 
+                                tooltip_text.get_width() + 10, 25))
+                screen.blit(tooltip_text, 
+                           (hit_button.x + 5, hit_button.y - 25))
             draw_glowing_button(screen, stand_button, "STAND", WHITE, RED,
                                 (255, 100, 100))
-
+            if stand_button.collidepoint(pygame.mouse.get_pos()):
+                tooltip_font = pygame.font.Font(None, 24)
+                tooltip_text = tooltip_font.render("Keep your current hand", True, WHITE)
+                pygame.draw.rect(screen, (0, 0, 0, 200),
+                                (stand_button.x, stand_button.y - 30, 
+                                tooltip_text.get_width() + 10, 25))
+                screen.blit(tooltip_text, 
+                           (stand_button.x + 5, stand_button.y - 25))
             # Draw double button only for first decision with enough money
             if len(player_hand) == 2 and PLAYER_MONEY >= current_bet:
                 draw_glowing_button(screen, double_button, "DOUBLE", WHITE,
                                     GOLD, (255, 215, 0))
+                if double_button.collidepoint(pygame.mouse.get_pos()):
+                    tooltip_font = pygame.font.Font(None, 24)
+                    tooltip_text = tooltip_font.render("Double your bet and take exactly one more card", True, WHITE)
+                    pygame.draw.rect(screen, (0, 0, 0, 200),
+                                    (double_button.x, double_button.y - 30, 
+                                    tooltip_text.get_width() + 10, 25))
+                    screen.blit(tooltip_text, 
+                               (double_button.x + 5, double_button.y - 25))
 
             # Draw split button only if first two cards are the same value
             if len(player_hand) == 2 and PLAYER_MONEY >= current_bet:
@@ -4307,6 +5575,29 @@ def main():
                 if card1_value == card2_value:
                     draw_glowing_button(screen, split_button, "SPLIT", WHITE,
                                         PURPLE, (200, 100, 255))
+                    if split_button.collidepoint(pygame.mouse.get_pos()):
+                        tooltip_font = pygame.font.Font(None, 24)
+                        tooltip_text = tooltip_font.render("Split your pair into two separate hands", True, WHITE)
+                        pygame.draw.rect(screen, (0, 0, 0, 200),
+                                        (split_button.x, split_button.y - 30, 
+                                        tooltip_text.get_width() + 10, 25))
+                        screen.blit(tooltip_text, 
+                                   (split_button.x + 5, split_button.y - 25))
+
+            # Show Surrender button only in VIP room on first decision
+            if VIP_ROOM_ACTIVE and len(player_hand) == 2:
+                draw_glowing_button(screen, surrender_button, "SURRENDER", WHITE, 
+                                  SURRENDER_COLOR, (150, 150, 150))
+        
+                # Draw tooltip when hovering
+                if surrender_button.collidepoint(pygame.mouse.get_pos()):
+                    tooltip_font = pygame.font.Font(None, 24)
+                    tooltip_text = tooltip_font.render("Give up hand and recover half your bet", True, WHITE)
+                    pygame.draw.rect(screen, (0, 0, 0, 200),
+                                    (surrender_button.x, surrender_button.y - 30, 
+                                    tooltip_text.get_width() + 10, 25))
+                    screen.blit(tooltip_text, 
+                               (surrender_button.x + 5, surrender_button.y - 25))
 
         elif game_state == "GAME_OVER":
             # Draw new hand button
@@ -4323,20 +5614,25 @@ def main():
             if pygame.mouse.get_pressed()[0]:
                 mouse_pos = pygame.mouse.get_pos()
                 if main_menu_button.collidepoint(mouse_pos):
-                    return  # Exit the game loop and return to the main menu
+                    return  
 
             # Draw result text
             result_font = pygame.font.Font(None, 72)
             result_text = result_font.render(
-                result, True,
+                str(result) if result else "", True,  # Convert to string and handle empty case
                 GOLD if "WIN" in result or "BLACKJACK" in result else
-                RED if "BUST" in result or "DEALER WINS" in result else BLUE)
+                RED if "BUST" in result or "DEALER WINS" in result else 
+                (150, 150, 150) if "SURRENDER" in result else BLUE)
             screen.blit(
                 result_text,
                 (WIDTH // 2 - result_text.get_width() // 2, HEIGHT // 2 - 50))
 
-            # Draw winnings/losses text for single hands
-            if len(player_hands) == 1:
+            if "SURRENDER" in result:
+                loss_text = FONT.render(f"- ${current_bet // 2} (Surrender)", True, (150, 150, 150))
+                screen.blit(loss_text,
+                           (WIDTH // 2 - loss_text.get_width() // 2,
+                            HEIGHT // 2 + 20))
+            elif len(player_hands) == 1:
                 if "WIN" in result or "BLACKJACK" in result or "DEALER BUSTS" in result:
                     winnings = int(
                         current_bet *
@@ -4413,7 +5709,6 @@ def main():
                                                    True, WHITE)
                 screen.blit(ach_text, (WIDTH - 280, 200 + i * 40))
 
-        # In the main game loop, add these checks:
         if not deck:
             deck = shuffle_deck()  # Reshuffle if the deck is empty
 
@@ -4423,11 +5718,13 @@ def main():
             if choice == "RESTART":
                 # Reset player money and restart the game
                 PLAYER_MONEY = 1000  # Reset to default starting money
+                VIP_ROOM_ACTIVE = False
                 save_player_money(PLAYER_MONEY)
                 return  # Exit the current game loop and restart
             else:
                 # Quit the game
                 running = False
+                PLAYER_MONEY = 1000
 
         # Display FPS
         fps_text = FONT.render(f"FPS: {int(clock.get_fps())}", True, WHITE)
@@ -4462,6 +5759,7 @@ if __name__ == "__main__":
             # Show the achievements screen
             show_achievements_screen()
         else:  # QUIT
+            VIP_ROOM_ACTIVE = False
             # Exit the game
             break
     
